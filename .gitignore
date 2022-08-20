@@ -1,3 +1,4 @@
 *.pyc
 *.txt
 build
+help.spec

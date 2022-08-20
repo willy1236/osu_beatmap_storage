@@ -93,19 +93,19 @@ win.geometry("300x200")
 win.resizable(False,False)
 
 btn1 = Button(text="生成紀錄",command=btn1_command,width=10,height=2)
-btn1.place(x=40,y=130)
+btn1.place(anchor='center',x=100,y=150)
 
 
 btn2 = Button(text="下載圖譜",command=btn2_command,width=10,height=2)
-btn2.place(x=170,y=130)
+btn2.place(anchor='center',x=200,y=150)
 
 lb1 = Label(text='歡迎使用osu圖譜紀錄器\n按下"生成紀錄"以生成紀錄或按下"下載圖譜"進行下載')
-lb1.place(x=5,y=20)
+lb1.place(anchor='center',x=150,y=30)
 
 lb2 = Label(text='')
-lb2.place(x=95,y=55)
+lb2.place(anchor='center',x=150,y=85)
 
 en = Entry()
-en.place(x=75,y=90)
+en.place(anchor='center',x=150,y=110)
 
 mainloop()
