@@ -14,7 +14,12 @@ params = {
 def save(locate):
     text = ""
     i = 0
-    for filename in os.listdir(locate):
+    list = os.listdir(locate)
+    if list:
+        #時間排序
+        dir_list = sorted(list,key=lambda x: os.path.getmtime(os.path.join(locate, x)))
+    
+    for filename in dir_list:
         try:
             fname = filename.split(maxsplit=1)
             id = int(fname[0])
