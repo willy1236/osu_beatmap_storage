@@ -84,9 +84,9 @@ def btn2_command2():
             id = line[:-1].split(maxsplit=1)[0]
             list.append(id)
     l = 0
-    for i in list:
+    for id in list:
         l += 1
-        t = download(i)
+        t = download(id)
         t += f"\n已完成:{l}/{len(list)}"
         lb2.config(text=t)
         time.sleep(3)
