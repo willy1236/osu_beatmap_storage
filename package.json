@@ -1,0 +1,15 @@
+{
+  "name": "realm-db-exporter",
+  "version": "1.0.0",
+  "description": "Export Realm DB data to JSON/CSV format",
+  "type": "module",
+  "main": "export-realm.js",
+  "scripts": {
+    "export": "node export-realm.js",
+    "export:csv": "node export-realm.js --format csv"
+  },
+  "dependencies": {
+    "realm": "^12.0.0",
+    "csv-writer": "^1.6.0"
+  }
+}
