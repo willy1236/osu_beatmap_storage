@@ -1,14 +1,17 @@
-import os,requests,datetime,time
-from tkinter import * 
+import datetime
+import os
+import time
 from threading import Thread
-#D:\osu!\Songs
+from tkinter import *
+
+import requests
+
+# D:\osu!\Songs
 
 HEADERS = {
     "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36",
 }
-params = {
-    "n":"1"
-}
+params = {"n": "1"}
 
 
 def save(locate):
@@ -16,9 +19,9 @@ def save(locate):
     i = 0
     list = os.listdir(locate)
     if list:
-        #時間排序
-        dir_list = sorted(list,key=lambda x: os.path.getmtime(os.path.join(locate, x)))
-    
+        # 時間排序
+        dir_list = sorted(list, key=lambda x: os.path.getmtime(os.path.join(locate, x)))
+
     for filename in dir_list:
         try:
             fname = filename.split(maxsplit=1)
@@ -30,16 +33,16 @@ def save(locate):
             pass
 
     #print(f'圖譜保存完成\n圖譜總計:{i}')
-    with open('save.txt','w') as f:
+    with open("save.txt", "w") as f:
         f.write(text)
     return i
 
 def search(setid:str):
-    url = f'https://api.chimu.moe/v1/set/{setid}'
+    url = f"https://api.chimu.moe/v1/set/{setid}"
     r = requests.get(url,headers=HEADERS).json()
     if r:
-        setid = r.get('SetId')
-        title = r.get('Title')
+        setid = r.get("SetId")
+        title = r.get("Title")
         return title
     else:
         return None
@@ -50,7 +53,7 @@ def download(setid:str):
         url = f"https://api.chimu.moe/v1/download/{setid}"
         r = requests.get(url,headers=HEADERS)
         if r.status_code == 200:
-            with open(f'{setid} {title}.osz',mode='wb') as file:
+            with open(f"{setid} {title}.osz", mode="wb") as file:
                 file.write(r.content)
             return f"id:{setid} 下載成功"
         else:
@@ -78,7 +81,7 @@ def btn2_command():
 
 def btn2_command2():
     lb2.config(text=f"下載中...")
-    with open('save.txt',mode='r') as file:
+    with open("save.txt", mode="r") as file:
         list = []
         for line in file.readlines():
             id = line[:-1].split(maxsplit=1)[0]
@@ -90,27 +93,27 @@ def btn2_command2():
         t += f"\n已完成:{l}/{len(list)}"
         lb2.config(text=t)
         time.sleep(3)
-        
+
 
 win = Tk()
-win.title('osu圖譜紀錄器')
+win.title("osu圖譜紀錄器")
 win.geometry("300x200")
-win.resizable(False,False)
+win.resizable(False, False)
 
-btn1 = Button(text="生成紀錄",command=btn1_command,width=10,height=2)
-btn1.place(anchor='center',x=100,y=150)
+btn1 = Button(text="生成紀錄", command=btn1_command, width=10, height=2)
+btn1.place(anchor="center", x=100, y=150)
 
 
-btn2 = Button(text="下載圖譜",command=btn2_command,width=10,height=2)
-btn2.place(anchor='center',x=200,y=150)
+btn2 = Button(text="下載圖譜", command=btn2_command, width=10, height=2)
+btn2.place(anchor="center", x=200, y=150)
 
 lb1 = Label(text='歡迎使用osu圖譜紀錄器\n按下"生成紀錄"以生成紀錄或按下"下載圖譜"進行下載')
-lb1.place(anchor='center',x=150,y=30)
+lb1.place(anchor="center", x=150, y=30)
 
-lb2 = Label(text='')
-lb2.place(anchor='center',x=150,y=85)
+lb2 = Label(text="")
+lb2.place(anchor="center", x=150, y=85)
 
 en = Entry()
-en.place(anchor='center',x=150,y=110)
+en.place(anchor="center", x=150, y=110)
 
 mainloop()

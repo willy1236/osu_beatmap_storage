@@ -2,3 +2,5 @@
 *.txt
 build
 help.spec
+node_modules
+export
