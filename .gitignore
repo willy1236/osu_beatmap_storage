@@ -7,6 +7,9 @@
 .buildlog/
 .history
 
+# User config（個人路徑設定，不納入版本控制）
+config.json
+
 
 
 # Flutter repo-specific
@@ -123,4 +126,4 @@ app.*.symbols
 build
 help.spec
 node_modules
-export
+osu_downloads
