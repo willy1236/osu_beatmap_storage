@@ -127,3 +127,4 @@ build
 help.spec
 node_modules
 osu_downloads
+bin

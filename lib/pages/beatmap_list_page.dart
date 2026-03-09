@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:realm/realm.dart';
 import '../constants.dart';
@@ -14,6 +15,7 @@ import '../widgets/beatmap_set_tile.dart';
 import '../widgets/csv_picker_dialog.dart';
 import 'csv_import_page.dart';
 import 'download_queue_page.dart';
+import 'replay_list_page.dart';
 
 class BeatmapListPage extends StatefulWidget {
   const BeatmapListPage({super.key});
@@ -31,7 +33,7 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
   bool _importing = false;
   bool _batchEnqueuing = false;
   String _searchQuery = '';
-  String _realmPath = kDefaultRealmPath;
+  String _osuDir = kDefaultOsuDir;
 
   @override
   void initState() {
@@ -40,7 +42,7 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
   }
 
   Future<void> _initPath() async {
-    final isFirst = !(await PrefsService.hasRealmPath());
+    final isFirst = !(await PrefsService.hasOsuDir());
     if (isFirst) {
       // 首次啟動：等 widget tree 就緒後直接彈出選取器
       WidgetsBinding.instance.addPostFrameCallback(
@@ -49,8 +51,8 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
       setState(() => _loading = false);
       return;
     }
-    final path = await PrefsService.getRealmPath();
-    setState(() => _realmPath = path);
+    final path = await PrefsService.getOsuDir();
+    setState(() => _osuDir = path);
     _loadRealm();
   }
 
@@ -71,7 +73,7 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
     try {
       _realm?.close();
       _realm = null;
-      final realm = await RealmService.open(_realmPath);
+      final realm = await RealmService.open(p.join(_osuDir, 'client.realm'));
       final sets =
           realm.all<BeatmapSetInfo>().where((s) => !s.deletePending).toList()
             ..sort((a, b) => b.dateAdded.compareTo(a.dateAdded));
@@ -111,8 +113,8 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
     }
     final path = result.files.single.path;
     if (path == null || !mounted) return;
-    await PrefsService.setRealmPath(path);
-    setState(() => _realmPath = path);
+    await PrefsService.setOsuDir(p.dirname(path));
+    setState(() => _osuDir = p.dirname(path));
     _loadRealm();
   }
 
@@ -418,6 +420,14 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
             },
           ),
           IconButton(
+            icon: const Icon(Icons.play_circle_outline),
+            tooltip: '回放列表',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ReplayListPage()),
+            ),
+          ),
+          IconButton(
             icon: const Icon(Icons.folder_open),
             tooltip: '選取 client.realm 路徑',
             onPressed: _pickRealmFile,
@@ -442,7 +452,7 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
             const CircularProgressIndicator(),
             const SizedBox(height: 16),
             Text(
-              '正在讀取…\n$_realmPath',
+              '正在讀取…\n$_osuDir',
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
@@ -493,7 +503,7 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
     }
 
     // 首次啟動：尚未選取路徑、也沒有資料
-    if (_beatmapSets.isEmpty && _realmPath == kDefaultRealmPath) {
+    if (_beatmapSets.isEmpty && _osuDir == kDefaultOsuDir) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(32),

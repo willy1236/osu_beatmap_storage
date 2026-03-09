@@ -27,20 +27,46 @@ abstract final class PrefsService {
     );
   }
 
-  /// 回傳使用者是否已曾設定過路徑
-  static Future<bool> hasRealmPath() async {
+  /// 回傳使用者是否已曾設定過 osu 目錄
+  static Future<bool> hasOsuDir() async {
     final data = await _read();
-    return data.containsKey('realm_path');
+    return data.containsKey('osu_dir');
   }
 
-  static Future<String> getRealmPath() async {
+  static Future<String> getOsuDir() async {
     final data = await _read();
-    return (data['realm_path'] as String?) ?? kDefaultRealmPath;
+    return (data['osu_dir'] as String?) ?? kDefaultOsuDir;
   }
 
-  static Future<void> setRealmPath(String path) async {
+  static Future<void> setOsuDir(String dir) async {
     final data = await _read();
-    data['realm_path'] = path;
+    data['osu_dir'] = dir;
+    await _write(data);
+  }
+
+  /// danser 渲染時使用的 skin 名稱（對應 danser Skins/ 下的資料夾名稱）
+  /// 空字串 = 使用 danser 目前設定（不修改）
+  static Future<String> getSkinName() async {
+    final data = await _read();
+    return (data['skin_name'] as String?) ?? '';
+  }
+
+  static Future<void> setSkinName(String name) async {
+    final data = await _read();
+    data['skin_name'] = name;
+    await _write(data);
+  }
+
+  /// 自訂 Skins 資料夾路徑（例如指向 osu!stable 的 Skins 資料夾）
+  /// 空字串 = 使用 danser 頑目下的 Skins/ 資料夾
+  static Future<String> getSkinsDir() async {
+    final data = await _read();
+    return (data['skins_dir'] as String?) ?? '';
+  }
+
+  static Future<void> setSkinsDir(String dir) async {
+    final data = await _read();
+    data['skins_dir'] = dir;
     await _write(data);
   }
 }

@@ -1,5 +1,5 @@
-/// osu!lazer client.realm 的預設路徑（使用者未選取時的 fallback）
-const kDefaultRealmPath = r'D:\osu!lazer\client.realm';
+/// osu!lazer 資料目錄的預設路徑（使用者未選取時的 fallback）
+const kDefaultOsuDir = r'D:\osu!lazer';
 const kDownloadBaseUrl = 'https://osu.direct/api/d/';
 const kDownloadInterDelay = Duration(seconds: 3);
 

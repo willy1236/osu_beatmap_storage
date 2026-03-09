@@ -9,6 +9,145 @@ part of 'osu_realm_models.dart';
 
 // coverage:ignore-file
 // ignore_for_file: type=lint
+
+class RealmFile extends _RealmFile
+    with RealmEntity, RealmObjectBase, RealmObject {
+  RealmFile(String? hash) {
+    RealmObjectBase.set(this, 'Hash', hash);
+  }
+
+  RealmFile._();
+
+  @override
+  String? get hash => RealmObjectBase.get<String>(this, 'Hash') as String?;
+  @override
+  set hash(String? value) => RealmObjectBase.set(this, 'Hash', value);
+
+  @override
+  Stream<RealmObjectChanges<RealmFile>> get changes =>
+      RealmObjectBase.getChanges<RealmFile>(this);
+
+  @override
+  Stream<RealmObjectChanges<RealmFile>> changesFor([List<String>? keyPaths]) =>
+      RealmObjectBase.getChangesFor<RealmFile>(this, keyPaths);
+
+  @override
+  RealmFile freeze() => RealmObjectBase.freezeObject<RealmFile>(this);
+
+  EJsonValue toEJson() {
+    return <String, dynamic>{'Hash': hash.toEJson()};
+  }
+
+  static EJsonValue _toEJson(RealmFile value) => value.toEJson();
+  static RealmFile _fromEJson(EJsonValue ejson) {
+    if (ejson is! Map<String, dynamic>) return raiseInvalidEJson(ejson);
+    return switch (ejson) {
+      _ => RealmFile(fromEJson(ejson['Hash'])),
+      _ => raiseInvalidEJson(ejson),
+    };
+  }
+
+  static final schema = () {
+    RealmObjectBase.registerFactory(RealmFile._);
+    register(_toEJson, _fromEJson);
+    return const SchemaObject(ObjectType.realmObject, RealmFile, 'File', [
+      SchemaProperty(
+        'hash',
+        RealmPropertyType.string,
+        mapTo: 'Hash',
+        optional: true,
+        primaryKey: true,
+      ),
+    ]);
+  }();
+
+  @override
+  SchemaObject get objectSchema => RealmObjectBase.getSchema(this) ?? schema;
+}
+
+class RealmNamedFileUsage extends _RealmNamedFileUsage
+    with RealmEntity, RealmObjectBase, EmbeddedObject {
+  RealmNamedFileUsage(String? filename, {RealmFile? file}) {
+    RealmObjectBase.set(this, 'File', file);
+    RealmObjectBase.set(this, 'Filename', filename);
+  }
+
+  RealmNamedFileUsage._();
+
+  @override
+  RealmFile? get file =>
+      RealmObjectBase.get<RealmFile>(this, 'File') as RealmFile?;
+  @override
+  set file(covariant RealmFile? value) =>
+      RealmObjectBase.set(this, 'File', value);
+
+  @override
+  String? get filename =>
+      RealmObjectBase.get<String>(this, 'Filename') as String?;
+  @override
+  set filename(String? value) => RealmObjectBase.set(this, 'Filename', value);
+
+  @override
+  Stream<RealmObjectChanges<RealmNamedFileUsage>> get changes =>
+      RealmObjectBase.getChanges<RealmNamedFileUsage>(this);
+
+  @override
+  Stream<RealmObjectChanges<RealmNamedFileUsage>> changesFor([
+    List<String>? keyPaths,
+  ]) => RealmObjectBase.getChangesFor<RealmNamedFileUsage>(this, keyPaths);
+
+  @override
+  RealmNamedFileUsage freeze() =>
+      RealmObjectBase.freezeObject<RealmNamedFileUsage>(this);
+
+  EJsonValue toEJson() {
+    return <String, dynamic>{
+      'File': file.toEJson(),
+      'Filename': filename.toEJson(),
+    };
+  }
+
+  static EJsonValue _toEJson(RealmNamedFileUsage value) => value.toEJson();
+  static RealmNamedFileUsage _fromEJson(EJsonValue ejson) {
+    if (ejson is! Map<String, dynamic>) return raiseInvalidEJson(ejson);
+    return switch (ejson) {
+      _ => RealmNamedFileUsage(
+        fromEJson(ejson['Filename']),
+        file: fromEJson(ejson['File']),
+      ),
+      _ => raiseInvalidEJson(ejson),
+    };
+  }
+
+  static final schema = () {
+    RealmObjectBase.registerFactory(RealmNamedFileUsage._);
+    register(_toEJson, _fromEJson);
+    return const SchemaObject(
+      ObjectType.embeddedObject,
+      RealmNamedFileUsage,
+      'RealmNamedFileUsage',
+      [
+        SchemaProperty(
+          'file',
+          RealmPropertyType.object,
+          mapTo: 'File',
+          optional: true,
+          linkTarget: 'File',
+        ),
+        SchemaProperty(
+          'filename',
+          RealmPropertyType.string,
+          mapTo: 'Filename',
+          optional: true,
+        ),
+      ],
+    );
+  }();
+
+  @override
+  SchemaObject get objectSchema => RealmObjectBase.getSchema(this) ?? schema;
+}
+
 class RealmUser extends _RealmUser
     with RealmEntity, RealmObjectBase, EmbeddedObject {
   RealmUser(int onlineID, {String? username, String? countryCode}) {
@@ -683,6 +822,7 @@ class BeatmapSetInfo extends _BeatmapSetInfo
     DateTime? dateSubmitted,
     String? hash,
     Iterable<BeatmapInfo> beatmaps = const [],
+    Iterable<RealmNamedFileUsage> files = const [],
   }) {
     RealmObjectBase.set(this, 'ID', id);
     RealmObjectBase.set(this, 'OnlineID', onlineID);
@@ -696,6 +836,11 @@ class BeatmapSetInfo extends _BeatmapSetInfo
       this,
       'Beatmaps',
       RealmList<BeatmapInfo>(beatmaps),
+    );
+    RealmObjectBase.set<RealmList<RealmNamedFileUsage>>(
+      this,
+      'Files',
+      RealmList<RealmNamedFileUsage>(files),
     );
   }
 
@@ -756,6 +901,14 @@ class BeatmapSetInfo extends _BeatmapSetInfo
       throw RealmUnsupportedSetError();
 
   @override
+  RealmList<RealmNamedFileUsage> get files =>
+      RealmObjectBase.get<RealmNamedFileUsage>(this, 'Files')
+          as RealmList<RealmNamedFileUsage>;
+  @override
+  set files(covariant RealmList<RealmNamedFileUsage> value) =>
+      throw RealmUnsupportedSetError();
+
+  @override
   Stream<RealmObjectChanges<BeatmapSetInfo>> get changes =>
       RealmObjectBase.getChanges<BeatmapSetInfo>(this);
 
@@ -778,6 +931,7 @@ class BeatmapSetInfo extends _BeatmapSetInfo
       'Hash': hash.toEJson(),
       'Protected': isProtected.toEJson(),
       'Beatmaps': beatmaps.toEJson(),
+      'Files': files.toEJson(),
     };
   }
 
@@ -803,6 +957,7 @@ class BeatmapSetInfo extends _BeatmapSetInfo
           dateSubmitted: fromEJson(ejson['DateSubmitted']),
           hash: fromEJson(ejson['Hash']),
           beatmaps: fromEJson(ejson['Beatmaps']),
+          files: fromEJson(ejson['Files']),
         ),
       _ => raiseInvalidEJson(ejson),
     };
@@ -858,8 +1013,234 @@ class BeatmapSetInfo extends _BeatmapSetInfo
           linkTarget: 'Beatmap',
           collectionType: RealmCollectionType.list,
         ),
+        SchemaProperty(
+          'files',
+          RealmPropertyType.object,
+          mapTo: 'Files',
+          linkTarget: 'RealmNamedFileUsage',
+          collectionType: RealmCollectionType.list,
+        ),
       ],
     );
+  }();
+
+  @override
+  SchemaObject get objectSchema => RealmObjectBase.getSchema(this) ?? schema;
+}
+
+class ScoreInfo extends _ScoreInfo
+    with RealmEntity, RealmObjectBase, RealmObject {
+  ScoreInfo(
+    Uuid id,
+    bool deletePending,
+    int totalScore,
+    int maxCombo,
+    double accuracy,
+    int rank,
+    DateTime date, {
+    BeatmapInfo? beatmapInfo,
+    String? beatmapHash,
+    RulesetInfo? ruleset,
+    String? hash,
+    double? pp,
+  }) {
+    RealmObjectBase.set(this, 'ID', id);
+    RealmObjectBase.set(this, 'BeatmapInfo', beatmapInfo);
+    RealmObjectBase.set(this, 'BeatmapHash', beatmapHash);
+    RealmObjectBase.set(this, 'Ruleset', ruleset);
+    RealmObjectBase.set(this, 'Hash', hash);
+    RealmObjectBase.set(this, 'DeletePending', deletePending);
+    RealmObjectBase.set(this, 'TotalScore', totalScore);
+    RealmObjectBase.set(this, 'MaxCombo', maxCombo);
+    RealmObjectBase.set(this, 'Accuracy', accuracy);
+    RealmObjectBase.set(this, 'Rank', rank);
+    RealmObjectBase.set(this, 'Date', date);
+    RealmObjectBase.set(this, 'PP', pp);
+  }
+
+  ScoreInfo._();
+
+  @override
+  Uuid get id => RealmObjectBase.get<Uuid>(this, 'ID') as Uuid;
+  @override
+  set id(Uuid value) => RealmObjectBase.set(this, 'ID', value);
+
+  @override
+  BeatmapInfo? get beatmapInfo =>
+      RealmObjectBase.get<BeatmapInfo>(this, 'BeatmapInfo') as BeatmapInfo?;
+  @override
+  set beatmapInfo(covariant BeatmapInfo? value) =>
+      RealmObjectBase.set(this, 'BeatmapInfo', value);
+
+  @override
+  String? get beatmapHash =>
+      RealmObjectBase.get<String>(this, 'BeatmapHash') as String?;
+  @override
+  set beatmapHash(String? value) =>
+      RealmObjectBase.set(this, 'BeatmapHash', value);
+
+  @override
+  RulesetInfo? get ruleset =>
+      RealmObjectBase.get<RulesetInfo>(this, 'Ruleset') as RulesetInfo?;
+  @override
+  set ruleset(covariant RulesetInfo? value) =>
+      RealmObjectBase.set(this, 'Ruleset', value);
+
+  @override
+  String? get hash => RealmObjectBase.get<String>(this, 'Hash') as String?;
+  @override
+  set hash(String? value) => RealmObjectBase.set(this, 'Hash', value);
+
+  @override
+  bool get deletePending =>
+      RealmObjectBase.get<bool>(this, 'DeletePending') as bool;
+  @override
+  set deletePending(bool value) =>
+      RealmObjectBase.set(this, 'DeletePending', value);
+
+  @override
+  int get totalScore => RealmObjectBase.get<int>(this, 'TotalScore') as int;
+  @override
+  set totalScore(int value) => RealmObjectBase.set(this, 'TotalScore', value);
+
+  @override
+  int get maxCombo => RealmObjectBase.get<int>(this, 'MaxCombo') as int;
+  @override
+  set maxCombo(int value) => RealmObjectBase.set(this, 'MaxCombo', value);
+
+  @override
+  double get accuracy =>
+      RealmObjectBase.get<double>(this, 'Accuracy') as double;
+  @override
+  set accuracy(double value) => RealmObjectBase.set(this, 'Accuracy', value);
+
+  @override
+  int get rank => RealmObjectBase.get<int>(this, 'Rank') as int;
+  @override
+  set rank(int value) => RealmObjectBase.set(this, 'Rank', value);
+
+  @override
+  DateTime get date => RealmObjectBase.get<DateTime>(this, 'Date') as DateTime;
+  @override
+  set date(DateTime value) => RealmObjectBase.set(this, 'Date', value);
+
+  @override
+  double? get pp => RealmObjectBase.get<double>(this, 'PP') as double?;
+  @override
+  set pp(double? value) => RealmObjectBase.set(this, 'PP', value);
+
+  @override
+  Stream<RealmObjectChanges<ScoreInfo>> get changes =>
+      RealmObjectBase.getChanges<ScoreInfo>(this);
+
+  @override
+  Stream<RealmObjectChanges<ScoreInfo>> changesFor([List<String>? keyPaths]) =>
+      RealmObjectBase.getChangesFor<ScoreInfo>(this, keyPaths);
+
+  @override
+  ScoreInfo freeze() => RealmObjectBase.freezeObject<ScoreInfo>(this);
+
+  EJsonValue toEJson() {
+    return <String, dynamic>{
+      'ID': id.toEJson(),
+      'BeatmapInfo': beatmapInfo.toEJson(),
+      'BeatmapHash': beatmapHash.toEJson(),
+      'Ruleset': ruleset.toEJson(),
+      'Hash': hash.toEJson(),
+      'DeletePending': deletePending.toEJson(),
+      'TotalScore': totalScore.toEJson(),
+      'MaxCombo': maxCombo.toEJson(),
+      'Accuracy': accuracy.toEJson(),
+      'Rank': rank.toEJson(),
+      'Date': date.toEJson(),
+      'PP': pp.toEJson(),
+    };
+  }
+
+  static EJsonValue _toEJson(ScoreInfo value) => value.toEJson();
+  static ScoreInfo _fromEJson(EJsonValue ejson) {
+    if (ejson is! Map<String, dynamic>) return raiseInvalidEJson(ejson);
+    return switch (ejson) {
+      {
+        'ID': EJsonValue id,
+        'DeletePending': EJsonValue deletePending,
+        'TotalScore': EJsonValue totalScore,
+        'MaxCombo': EJsonValue maxCombo,
+        'Accuracy': EJsonValue accuracy,
+        'Rank': EJsonValue rank,
+        'Date': EJsonValue date,
+      } =>
+        ScoreInfo(
+          fromEJson(id),
+          fromEJson(deletePending),
+          fromEJson(totalScore),
+          fromEJson(maxCombo),
+          fromEJson(accuracy),
+          fromEJson(rank),
+          fromEJson(date),
+          beatmapInfo: fromEJson(ejson['BeatmapInfo']),
+          beatmapHash: fromEJson(ejson['BeatmapHash']),
+          ruleset: fromEJson(ejson['Ruleset']),
+          hash: fromEJson(ejson['Hash']),
+          pp: fromEJson(ejson['PP']),
+        ),
+      _ => raiseInvalidEJson(ejson),
+    };
+  }
+
+  static final schema = () {
+    RealmObjectBase.registerFactory(ScoreInfo._);
+    register(_toEJson, _fromEJson);
+    return const SchemaObject(ObjectType.realmObject, ScoreInfo, 'Score', [
+      SchemaProperty(
+        'id',
+        RealmPropertyType.uuid,
+        mapTo: 'ID',
+        primaryKey: true,
+      ),
+      SchemaProperty(
+        'beatmapInfo',
+        RealmPropertyType.object,
+        mapTo: 'BeatmapInfo',
+        optional: true,
+        linkTarget: 'Beatmap',
+      ),
+      SchemaProperty(
+        'beatmapHash',
+        RealmPropertyType.string,
+        mapTo: 'BeatmapHash',
+        optional: true,
+      ),
+      SchemaProperty(
+        'ruleset',
+        RealmPropertyType.object,
+        mapTo: 'Ruleset',
+        optional: true,
+        linkTarget: 'Ruleset',
+      ),
+      SchemaProperty(
+        'hash',
+        RealmPropertyType.string,
+        mapTo: 'Hash',
+        optional: true,
+      ),
+      SchemaProperty(
+        'deletePending',
+        RealmPropertyType.bool,
+        mapTo: 'DeletePending',
+      ),
+      SchemaProperty('totalScore', RealmPropertyType.int, mapTo: 'TotalScore'),
+      SchemaProperty('maxCombo', RealmPropertyType.int, mapTo: 'MaxCombo'),
+      SchemaProperty('accuracy', RealmPropertyType.double, mapTo: 'Accuracy'),
+      SchemaProperty('rank', RealmPropertyType.int, mapTo: 'Rank'),
+      SchemaProperty('date', RealmPropertyType.timestamp, mapTo: 'Date'),
+      SchemaProperty(
+        'pp',
+        RealmPropertyType.double,
+        mapTo: 'PP',
+        optional: true,
+      ),
+    ]);
   }();
 
   @override

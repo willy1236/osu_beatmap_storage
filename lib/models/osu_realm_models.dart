@@ -115,6 +115,26 @@ class _BeatmapInfo {
   late String? md5Hash;
 }
 
+// ── Realm 物理檔案 ────────────────────────────────────────────────────────────
+@RealmModel()
+@MapTo('File')
+class _RealmFile {
+  @PrimaryKey()
+  @MapTo('Hash')
+  late String? hash;
+}
+
+// ── 已命名的檔案參照（嵌入式）────────────────────────────────────────────────────────────────────────
+@RealmModel(ObjectType.embeddedObject)
+@MapTo('RealmNamedFileUsage')
+class _RealmNamedFileUsage {
+  @MapTo('File')
+  late _RealmFile? file;
+
+  @MapTo('Filename')
+  late String? filename;
+}
+
 // ── 圖譜集 ────────────────────────────────────────────────────────────────────
 @RealmModel()
 @MapTo('BeatmapSet')
@@ -146,4 +166,49 @@ class _BeatmapSetInfo {
 
   @MapTo('Beatmaps')
   late List<_BeatmapInfo> beatmaps;
+
+  @MapTo('Files')
+  late List<_RealmNamedFileUsage> files;
+}
+
+// ── 點數紀錄（回放） ──────────────────────────────────────────────────────────
+@RealmModel()
+@MapTo('Score')
+class _ScoreInfo {
+  @PrimaryKey()
+  @MapTo('ID')
+  late Uuid id;
+
+  @MapTo('BeatmapInfo')
+  late _BeatmapInfo? beatmapInfo;
+
+  @MapTo('BeatmapHash')
+  late String? beatmapHash;
+
+  @MapTo('Ruleset')
+  late _RulesetInfo? ruleset;
+
+  @MapTo('Hash')
+  late String? hash;
+
+  @MapTo('DeletePending')
+  late bool deletePending;
+
+  @MapTo('TotalScore')
+  late int totalScore;
+
+  @MapTo('MaxCombo')
+  late int maxCombo;
+
+  @MapTo('Accuracy')
+  late double accuracy;
+
+  @MapTo('Rank')
+  late int rank;
+
+  @MapTo('Date')
+  late DateTime date;
+
+  @MapTo('PP')
+  late double? pp;
 }

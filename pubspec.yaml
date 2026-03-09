@@ -34,6 +34,9 @@ dependencies:
   path_provider: ^2.1.0 # 用於偵測各系統的儲存路徑
   http: ^1.1.0 # 替代原本的 requests 進行下載
   file_picker: ^8.0.0 # 讓使用者選取 client.realm 路徑
+  dio: ^5.7.0 # 支援進度回調的 HTTP 下載客戶端（danser-go 安裝用）
+  path: ^1.9.0 # 跨平台路徑拼接
+  archive: ^3.6.0 # 解壓縮 danser-go 釋出的 zip 包
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.

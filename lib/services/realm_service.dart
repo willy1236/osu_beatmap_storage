@@ -4,32 +4,60 @@ import '../models/osu_realm_models.dart';
 
 /// 負責偵測 Realm schema 版本並以唯讀方式開啟 client.realm
 abstract final class RealmService {
-  static final _schemas = [
+  // BeatmapSetInfo.schema 參照 RealmNamedFileUsage（Files 欄位），
+  // 因此所有包含 BeatmapSetInfo 的 schema 列表都必須一起宣告這兩個型別。
+  static final _baseSchemas = [
     BeatmapSetInfo.schema,
     BeatmapInfo.schema,
     BeatmapMetadata.schema,
     RulesetInfo.schema,
     RealmUser.schema,
+    RealmFile.schema,
+    RealmNamedFileUsage.schema,
   ];
+
+  static final _schemas = _baseSchemas;
+
+  static final _schemasWithScores = [..._baseSchemas, ScoreInfo.schema];
+
+  /// 包含 RealmFile / RealmNamedFileUsage，供讀取譜面集檔案列表使用
+  static final _schemasWithFiles = _baseSchemas;
 
   // 由大到小的候補版本清單（200 → 1）
   static final _likelyVersions = List.generate(200, (i) => 200 - i);
 
   static Future<Realm> open(String path) async {
+    return _openWithSchemas(path, _schemas);
+  }
+
+  /// 開啟含有 ScoreInfo（回放）的 Realm，供回放列表頁面使用
+  static Future<Realm> openWithScores(String path) async {
+    return _openWithSchemas(path, _schemasWithScores);
+  }
+
+  /// 開啟含有 RealmFile / RealmNamedFileUsage 的 Realm，供渲染前複製譜面檔案使用
+  static Future<Realm> openWithFiles(String path) async {
+    return _openWithSchemas(path, _schemasWithFiles);
+  }
+
+  static Future<Realm> _openWithSchemas(
+    String path,
+    List<SchemaObject> schemas,
+  ) async {
     if (!File(path).existsSync()) {
       throw Exception('找不到 Realm 檔案：$path');
     }
 
     String lastError = '';
 
-    // ── 步驟 1：嘗試 version=49，從錯誤訊息解析實際版本 ──────────────────────
+    // ── 步驟 1：嘗試 version=51，從錯誤訊息解析實際版本 ──────────────────────
     try {
       return Realm(
         Configuration.local(
-          _schemas,
+          schemas,
           path: path,
           isReadOnly: true,
-          schemaVersion: 49,
+          schemaVersion: 51,
         ),
       );
     } on RealmException catch (e) {
@@ -48,7 +76,7 @@ abstract final class RealmService {
         try {
           return Realm(
             Configuration.local(
-              _schemas,
+              schemas,
               path: path,
               isReadOnly: true,
               schemaVersion: v,
@@ -63,7 +91,7 @@ abstract final class RealmService {
       try {
         return Realm(
           Configuration.local(
-            _schemas,
+            schemas,
             path: path,
             isReadOnly: true,
             schemaVersion: v,

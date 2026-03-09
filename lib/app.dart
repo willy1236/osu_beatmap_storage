@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'pages/beatmap_list_page.dart';
+import 'widgets/danser_setup_gate.dart';
 
 class OsuBeatmapApp extends StatelessWidget {
   const OsuBeatmapApp({super.key});
@@ -15,7 +16,7 @@ class OsuBeatmapApp extends StatelessWidget {
           brightness: Brightness.dark,
         ),
       ),
-      home: const BeatmapListPage(),
+      home: const DanserSetupGate(child: BeatmapListPage()),
     );
   }
 }
