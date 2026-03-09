@@ -1,1 +1,0 @@
-start dist\main.exe -c
