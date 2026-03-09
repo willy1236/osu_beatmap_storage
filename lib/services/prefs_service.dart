@@ -69,4 +69,17 @@ abstract final class PrefsService {
     data['skins_dir'] = dir;
     await _write(data);
   }
+
+  /// 使用者從 osu!lazer Realm 選擇的 skin UUID
+  /// 空字串 = 不使用 Realm skin（回覆手動設定）
+  static Future<String> getSkinRealmId() async {
+    final data = await _read();
+    return (data['skin_realm_id'] as String?) ?? '';
+  }
+
+  static Future<void> setSkinRealmId(String id) async {
+    final data = await _read();
+    data['skin_realm_id'] = id;
+    await _write(data);
+  }
 }

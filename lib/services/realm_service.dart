@@ -23,6 +23,9 @@ abstract final class RealmService {
   /// 包含 RealmFile / RealmNamedFileUsage，供讀取譜面集檔案列表使用
   static final _schemasWithFiles = _baseSchemas;
 
+  /// 包含 SkinInfo，供讀取 skin 列表並複製檔案
+  static final _schemasWithSkins = [..._baseSchemas, SkinInfo.schema];
+
   // 由大到小的候補版本清單（200 → 1）
   static final _likelyVersions = List.generate(200, (i) => 200 - i);
 
@@ -38,6 +41,11 @@ abstract final class RealmService {
   /// 開啟含有 RealmFile / RealmNamedFileUsage 的 Realm，供渲染前複製譜面檔案使用
   static Future<Realm> openWithFiles(String path) async {
     return _openWithSchemas(path, _schemasWithFiles);
+  }
+
+  /// 開啟含有 SkinInfo 的 Realm，供讀取 skin 列表並從 files/ 復原 skin 檔案
+  static Future<Realm> openWithSkins(String path) async {
+    return _openWithSchemas(path, _schemasWithSkins);
   }
 
   static Future<Realm> _openWithSchemas(

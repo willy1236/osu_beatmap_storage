@@ -171,6 +171,30 @@ class _BeatmapSetInfo {
   late List<_RealmNamedFileUsage> files;
 }
 
+// ── Skin ──────────────────────────────────────────────────────────────────────
+@RealmModel()
+@MapTo('Skin')
+class _SkinInfo {
+  @PrimaryKey()
+  @MapTo('ID')
+  late Uuid id;
+
+  @MapTo('Name')
+  late String? name;
+
+  @MapTo('Creator')
+  late String? creator;
+
+  @MapTo('Hash')
+  late String? hash;
+
+  @MapTo('Protected')
+  late bool isProtected;
+
+  @MapTo('Files')
+  late List<_RealmNamedFileUsage> files;
+}
+
 // ── 點數紀錄（回放） ──────────────────────────────────────────────────────────
 @RealmModel()
 @MapTo('Score')

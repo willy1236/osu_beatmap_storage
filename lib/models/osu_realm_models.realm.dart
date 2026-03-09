@@ -41,10 +41,7 @@ class RealmFile extends _RealmFile
   static EJsonValue _toEJson(RealmFile value) => value.toEJson();
   static RealmFile _fromEJson(EJsonValue ejson) {
     if (ejson is! Map<String, dynamic>) return raiseInvalidEJson(ejson);
-    return switch (ejson) {
-      _ => RealmFile(fromEJson(ejson['Hash'])),
-      _ => raiseInvalidEJson(ejson),
-    };
+    return RealmFile(fromEJson(ejson['Hash']));
   }
 
   static final schema = () {
@@ -110,13 +107,10 @@ class RealmNamedFileUsage extends _RealmNamedFileUsage
   static EJsonValue _toEJson(RealmNamedFileUsage value) => value.toEJson();
   static RealmNamedFileUsage _fromEJson(EJsonValue ejson) {
     if (ejson is! Map<String, dynamic>) return raiseInvalidEJson(ejson);
-    return switch (ejson) {
-      _ => RealmNamedFileUsage(
-        fromEJson(ejson['Filename']),
-        file: fromEJson(ejson['File']),
-      ),
-      _ => raiseInvalidEJson(ejson),
-    };
+    return RealmNamedFileUsage(
+      fromEJson(ejson['Filename']),
+      file: fromEJson(ejson['File']),
+    );
   }
 
   static final schema = () {
@@ -535,7 +529,7 @@ class RulesetInfo extends _RulesetInfo
     if (ejson is! Map<String, dynamic>) return raiseInvalidEJson(ejson);
     return switch (ejson) {
       {
-        'ShortName': EJsonValue shortName,
+        'ShortName': EJsonValue _,
         'OnlineID': EJsonValue onlineID,
         'LastAppliedDifficultyVersion': EJsonValue lastAppliedDifficultyVersion,
         'Available': EJsonValue available,
@@ -1239,6 +1233,145 @@ class ScoreInfo extends _ScoreInfo
         RealmPropertyType.double,
         mapTo: 'PP',
         optional: true,
+      ),
+    ]);
+  }();
+
+  @override
+  SchemaObject get objectSchema => RealmObjectBase.getSchema(this) ?? schema;
+}
+
+class SkinInfo extends _SkinInfo
+    with RealmEntity, RealmObjectBase, RealmObject {
+  SkinInfo(
+    Uuid id,
+    bool isProtected, {
+    String? name,
+    String? creator,
+    String? hash,
+    Iterable<RealmNamedFileUsage> files = const [],
+  }) {
+    RealmObjectBase.set(this, 'ID', id);
+    RealmObjectBase.set(this, 'Name', name);
+    RealmObjectBase.set(this, 'Creator', creator);
+    RealmObjectBase.set(this, 'Hash', hash);
+    RealmObjectBase.set(this, 'Protected', isProtected);
+    RealmObjectBase.set<RealmList<RealmNamedFileUsage>>(
+      this,
+      'Files',
+      RealmList<RealmNamedFileUsage>(files),
+    );
+  }
+
+  SkinInfo._();
+
+  @override
+  Uuid get id => RealmObjectBase.get<Uuid>(this, 'ID') as Uuid;
+  @override
+  set id(Uuid value) => RealmObjectBase.set(this, 'ID', value);
+
+  @override
+  String? get name => RealmObjectBase.get<String>(this, 'Name') as String?;
+  @override
+  set name(String? value) => RealmObjectBase.set(this, 'Name', value);
+
+  @override
+  String? get creator =>
+      RealmObjectBase.get<String>(this, 'Creator') as String?;
+  @override
+  set creator(String? value) => RealmObjectBase.set(this, 'Creator', value);
+
+  @override
+  String? get hash => RealmObjectBase.get<String>(this, 'Hash') as String?;
+  @override
+  set hash(String? value) => RealmObjectBase.set(this, 'Hash', value);
+
+  @override
+  bool get isProtected => RealmObjectBase.get<bool>(this, 'Protected') as bool;
+  @override
+  set isProtected(bool value) => RealmObjectBase.set(this, 'Protected', value);
+
+  @override
+  RealmList<RealmNamedFileUsage> get files =>
+      RealmObjectBase.get<RealmNamedFileUsage>(this, 'Files')
+          as RealmList<RealmNamedFileUsage>;
+  @override
+  set files(covariant RealmList<RealmNamedFileUsage> value) =>
+      throw RealmUnsupportedSetError();
+
+  @override
+  Stream<RealmObjectChanges<SkinInfo>> get changes =>
+      RealmObjectBase.getChanges<SkinInfo>(this);
+
+  @override
+  Stream<RealmObjectChanges<SkinInfo>> changesFor([List<String>? keyPaths]) =>
+      RealmObjectBase.getChangesFor<SkinInfo>(this, keyPaths);
+
+  @override
+  SkinInfo freeze() => RealmObjectBase.freezeObject<SkinInfo>(this);
+
+  EJsonValue toEJson() {
+    return <String, dynamic>{
+      'ID': id.toEJson(),
+      'Name': name.toEJson(),
+      'Creator': creator.toEJson(),
+      'Hash': hash.toEJson(),
+      'Protected': isProtected.toEJson(),
+      'Files': files.toEJson(),
+    };
+  }
+
+  static EJsonValue _toEJson(SkinInfo value) => value.toEJson();
+  static SkinInfo _fromEJson(EJsonValue ejson) {
+    if (ejson is! Map<String, dynamic>) return raiseInvalidEJson(ejson);
+    return switch (ejson) {
+      {'ID': EJsonValue id, 'Protected': EJsonValue isProtected} => SkinInfo(
+        fromEJson(id),
+        fromEJson(isProtected),
+        name: fromEJson(ejson['Name']),
+        creator: fromEJson(ejson['Creator']),
+        hash: fromEJson(ejson['Hash']),
+        files: fromEJson(ejson['Files']),
+      ),
+      _ => raiseInvalidEJson(ejson),
+    };
+  }
+
+  static final schema = () {
+    RealmObjectBase.registerFactory(SkinInfo._);
+    register(_toEJson, _fromEJson);
+    return const SchemaObject(ObjectType.realmObject, SkinInfo, 'Skin', [
+      SchemaProperty(
+        'id',
+        RealmPropertyType.uuid,
+        mapTo: 'ID',
+        primaryKey: true,
+      ),
+      SchemaProperty(
+        'name',
+        RealmPropertyType.string,
+        mapTo: 'Name',
+        optional: true,
+      ),
+      SchemaProperty(
+        'creator',
+        RealmPropertyType.string,
+        mapTo: 'Creator',
+        optional: true,
+      ),
+      SchemaProperty(
+        'hash',
+        RealmPropertyType.string,
+        mapTo: 'Hash',
+        optional: true,
+      ),
+      SchemaProperty('isProtected', RealmPropertyType.bool, mapTo: 'Protected'),
+      SchemaProperty(
+        'files',
+        RealmPropertyType.object,
+        mapTo: 'Files',
+        linkTarget: 'RealmNamedFileUsage',
+        collectionType: RealmCollectionType.list,
       ),
     ]);
   }();

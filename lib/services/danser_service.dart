@@ -7,6 +7,7 @@ import 'package:archive/archive_io.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
+import 'package:realm/realm.dart';
 import '../models/osu_realm_models.dart';
 import 'prefs_service.dart';
 import 'realm_service.dart';
@@ -297,10 +298,27 @@ class DanserService extends ChangeNotifier {
     final env = await _prepareDanserEnvironment(osrPath);
 
     // 讀取 skin 設定
-    final skinName = await PrefsService.getSkinName();
-    final skinsDir = await PrefsService.getSkinsDir();
-
     final danserDir = p.dirname(_danserExePath!);
+    final osuDir = await PrefsService.getOsuDir();
+
+    // 解析 skin 設定：優先使用從 Realm 選擇的 skin，否則回退到手動設定
+    String? resolvedSkinName;
+    String? resolvedSkinsDir;
+
+    final skinRealmId = await PrefsService.getSkinRealmId();
+    if (skinRealmId.isNotEmpty) {
+      final result = await _ensureSkinReady(skinRealmId, osuDir, danserDir);
+      resolvedSkinName = result.$1;
+      resolvedSkinsDir = result.$2;
+    } else {
+      final manualName = await PrefsService.getSkinName();
+      final manualDir = await PrefsService.getSkinsDir();
+      if (manualName.isNotEmpty) {
+        resolvedSkinName = manualName;
+        resolvedSkinsDir = manualDir.isEmpty ? null : manualDir;
+      }
+    }
+
     final defaultJsonFile = File(p.join(danserDir, 'settings', 'default.json'));
     List<int>? originalJsonBytes;
 
@@ -313,8 +331,8 @@ class DanserService extends ChangeNotifier {
         defaultJsonFile,
         env.songsDir.path,
         outputDir,
-        skinName: skinName.isEmpty ? null : skinName,
-        skinsDir: skinsDir.isEmpty ? null : skinsDir,
+        skinName: resolvedSkinName,
+        skinsDir: resolvedSkinsDir,
       );
 
       // 3. 啟動 danser（-out 只傳純檔名，輸出目錄由 Recording.OutputDir 控制）
@@ -519,7 +537,69 @@ class DanserService extends ChangeNotifier {
     }
   }
 
-  static const _tempSettingsName = 'temp_replay';
+  /// 確保指定的 Realm skin 已複製到 danser 的 Skins 資料夾。
+  ///
+  /// 邏輯：
+  ///   1. 查詢 client.realm 找到對應 SkinInfo
+  ///   2. 若 danserDir/Skins/{skinName}/skin.ini 已存在 → 直接沿用
+  ///   3. 否則從 osuDir/files/ hash-based 路徑複製所有 skin 檔案
+  ///
+  /// 回傳 (skinFolderName, skinsFolderPath) 供寫入 default.json 使用。
+  Future<(String, String)> _ensureSkinReady(
+    String skinRealmId,
+    String osuDir,
+    String danserDir,
+  ) async {
+    final realmPath = p.join(osuDir, 'client.realm');
+    final realm = await RealmService.openWithSkins(realmPath);
+
+    try {
+      final uuid = Uuid.fromString(skinRealmId);
+      final skinInfo = realm.find<SkinInfo>(uuid);
+      if (skinInfo == null) {
+        throw Exception('找不到 skin（ID: $skinRealmId），請重新選擇');
+      }
+
+      final skinName = (skinInfo.name ?? '').isNotEmpty
+          ? skinInfo.name!
+          : skinRealmId.substring(0, 8);
+      final danserSkinsDir = p.join(danserDir, 'Skins');
+      final skinDir = Directory(p.join(danserSkinsDir, skinName));
+
+      // 若 skin.ini 已存在，不需要重新複製
+      if (File(p.join(skinDir.path, 'skin.ini')).existsSync()) {
+        return (skinName, danserSkinsDir);
+      }
+
+      // 從 osu!lazer hash-based 路徑複製 skin 檔案
+      await skinDir.create(recursive: true);
+      final filesRoot = p.join(osuDir, 'files');
+
+      for (final fileUsage in skinInfo.files) {
+        final hash = fileUsage.file?.hash;
+        if (hash == null || hash.length < 2) continue;
+
+        final srcPath = p.join(
+          filesRoot,
+          hash.substring(0, 1),
+          hash.substring(0, 2),
+          hash,
+        );
+        final srcFile = File(srcPath);
+        if (!srcFile.existsSync()) continue;
+
+        final filename = fileUsage.filename;
+        if (filename == null) continue;
+        final dstPath = p.join(skinDir.path, filename);
+        await Directory(p.dirname(dstPath)).create(recursive: true);
+        await srcFile.copy(dstPath);
+      }
+
+      return (skinName, danserSkinsDir);
+    } finally {
+      realm.close();
+    }
+  }
 
   /// 暫時修改 [defaultJsonFile] 的 OsuSongsDir，指向臨時 Songs 目錄。
   /// 呼叫者須在 finally 中自行還原備份。
@@ -555,15 +635,28 @@ class DanserService extends ChangeNotifier {
     base['Recording'] = recording;
 
     // 套用 skin（若有指定）
-    if (skinName != null || skinsDir != null) {
+    // danser 使用 General.OsuSkinsDir 決定 skin 搜尋路徑，而非 Skin 區塊
+    if (skinsDir != null) {
+      general['OsuSkinsDir'] = skinsDir.replaceAll('\\', '/');
+    }
+    if (skinName != null) {
       final skin = Map<String, dynamic>.from(
         (base['Skin'] as Map?)?.cast<String, dynamic>() ?? {},
       );
-      if (skinName != null) skin['CurrentSkin'] = skinName;
-      if (skinsDir != null)
-        skin['SkinsfoldPath'] = skinsDir.replaceAll('\\', '/');
+      skin['CurrentSkin'] = skinName;
       base['Skin'] = skin;
     }
+
+    // 停用癲癇警告（SeizureWarning 在 Playfield 區塊內）
+    final playfield = Map<String, dynamic>.from(
+      (base['Playfield'] as Map?)?.cast<String, dynamic>() ?? {},
+    );
+    final seizureWarning = Map<String, dynamic>.from(
+      (playfield['SeizureWarning'] as Map?)?.cast<String, dynamic>() ?? {},
+    );
+    seizureWarning['Enabled'] = false;
+    playfield['SeizureWarning'] = seizureWarning;
+    base['Playfield'] = playfield;
 
     await defaultJsonFile.parent.create(recursive: true);
     await defaultJsonFile.writeAsString(
