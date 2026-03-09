@@ -26,13 +26,17 @@ class BeatmapSetTile extends StatelessWidget {
 
     final statusText = kStatusLabel[set.status] ?? '?';
 
+    final added = set.dateAdded.toLocal();
+    final addedStr =
+        '${added.year}/${added.month.toString().padLeft(2, '0')}/${added.day.toString().padLeft(2, '0')}';
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       child: ListTile(
         leading: ModeIcon(beatmaps: set.beatmaps),
         title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
         subtitle: Text(
-          '$artist  ·  $statusText  ·  ${set.beatmaps.length} 難度',
+          '$artist  ·  $statusText  ·  ${set.beatmaps.length} 難度  ·  $addedStr',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),

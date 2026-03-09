@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:realm/realm.dart';
 import '../constants.dart';
 import '../models/download_job.dart';
@@ -183,12 +182,14 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
         );
       }
 
-      final dir = await getApplicationDocumentsDirectory();
+      final appDir = p.dirname(Platform.resolvedExecutable);
+      final csvDir = Directory(p.join(appDir, 'csv_exports'));
+      await csvDir.create(recursive: true);
       final ts = DateTime.now()
           .toIso8601String()
           .replaceAll(RegExp(r'[:\.]'), '-')
           .substring(0, 19);
-      final file = File('${dir.path}/osu_beatmaps_$ts.csv');
+      final file = File(p.join(csvDir.path, 'osu_beatmaps_$ts.csv'));
       await file.writeAsString(sb.toString(), flush: true);
 
       if (!mounted) return;
@@ -225,18 +226,20 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
   Future<void> _importCsv() async {
     setState(() => _importing = true);
     try {
-      final dir = await getApplicationDocumentsDirectory();
-      final csvFiles =
-          dir
-              .listSync()
-              .whereType<File>()
-              .where(
-                (f) =>
-                    f.path.endsWith('.csv') &&
-                    f.uri.pathSegments.last.startsWith('osu_beatmaps_'),
-              )
-              .toList()
-            ..sort((a, b) => b.path.compareTo(a.path));
+      final appDir = p.dirname(Platform.resolvedExecutable);
+      final csvDir = Directory(p.join(appDir, 'csv_exports'));
+      final csvFiles = csvDir.existsSync()
+          ? (csvDir
+                .listSync()
+                .whereType<File>()
+                .where(
+                  (f) =>
+                      f.path.endsWith('.csv') &&
+                      p.basename(f.path).startsWith('osu_beatmaps_'),
+                )
+                .toList()
+              ..sort((a, b) => b.path.compareTo(a.path)))
+          : <File>[];
 
       if (!mounted) return;
       if (csvFiles.isEmpty) {

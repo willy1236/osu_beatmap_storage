@@ -69,6 +69,10 @@ class _ReplayTileState extends State<ReplayTile> {
     });
   }
 
+  Future<void> _revealInExplorer() async {
+    await Process.run('explorer', ['/select,', _outputPath]);
+  }
+
   @override
   Widget build(BuildContext context) {
     final stat = widget.file.statSync();
@@ -108,6 +112,20 @@ class _ReplayTileState extends State<ReplayTile> {
                   ),
                 ),
                 const SizedBox(width: 8),
+                if (mp4Exists && !_rendering)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: IconButton(
+                      icon: const Icon(Icons.folder_open, size: 18),
+                      tooltip: '在檔案總管中顯示',
+                      onPressed: _revealInExplorer,
+                      style: IconButton.styleFrom(
+                        padding: const EdgeInsets.all(6),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                  ),
                 _buildActionButton(mp4Exists),
               ],
             ),
