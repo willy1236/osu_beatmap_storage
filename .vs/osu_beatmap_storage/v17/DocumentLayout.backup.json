@@ -1,0 +1,36 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\google drive\\github\\osu_beatmap_storage\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{BAA321E6-E5D7-436E-8F02-B2CE4BC005C6}|ui\\ui.csproj|c:\\google drive\\github\\osu_beatmap_storage\\ui\\form1.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}|Form",
+      "RelativeMoniker": "D:0:0:{BAA321E6-E5D7-436E-8F02-B2CE4BC005C6}|ui\\ui.csproj|solutionrelative:ui\\form1.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}|Form"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "Form1.cs [\u8A2D\u8A08]",
+              "DocumentMoniker": "C:\\google drive\\github\\osu_beatmap_storage\\ui\\Form1.cs",
+              "RelativeDocumentMoniker": "ui\\Form1.cs",
+              "ToolTip": "C:\\google drive\\github\\osu_beatmap_storage\\ui\\Form1.cs [\u8A2D\u8A08]",
+              "RelativeToolTip": "ui\\Form1.cs [\u8A2D\u8A08]",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-03-08T12:17:35.746Z",
+              "EditorCaption": " [\u8A2D\u8A08]"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
