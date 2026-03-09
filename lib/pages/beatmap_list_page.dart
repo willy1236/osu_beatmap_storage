@@ -15,7 +15,6 @@ import '../widgets/beatmap_set_tile.dart';
 import '../widgets/csv_picker_dialog.dart';
 import 'csv_import_page.dart';
 import 'download_queue_page.dart';
-import 'replay_list_page.dart';
 
 class BeatmapListPage extends StatefulWidget {
   const BeatmapListPage({super.key});
@@ -418,14 +417,6 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
                 ),
               );
             },
-          ),
-          IconButton(
-            icon: const Icon(Icons.play_circle_outline),
-            tooltip: '回放列表',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const ReplayListPage()),
-            ),
           ),
           IconButton(
             icon: const Icon(Icons.folder_open),
