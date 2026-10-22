@@ -12,6 +12,7 @@ import '../services/auto_upload_service.dart';
 import '../services/cloud_list_service.dart';
 import '../services/cloud_sync_service.dart';
 import '../services/download_service.dart';
+import '../services/local_library_service.dart';
 import '../services/prefs_service.dart';
 import '../services/realm_service.dart';
 import '../utils/beatmap_csv.dart';
@@ -84,6 +85,10 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
       final sets =
           realm.all<BeatmapSetInfo>().where((s) => !s.deletePending).toList()
             ..sort((a, b) => b.dateAdded.compareTo(a.dateAdded));
+      LocalLibraryService.instance.setOnlineIds({
+        for (final s in sets)
+          if (s.onlineID > 0) s.onlineID,
+      });
       setState(() {
         _realm = realm;
         _beatmapSets = sets;
