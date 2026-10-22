@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:osu_beatmap_storage/models/cloud_entry.dart';
+import 'package:osu_beatmap_storage/services/api_client.dart';
 import 'package:osu_beatmap_storage/services/cloud_sync_service.dart';
 
 List<CloudEntry> entries(int n, {int startId = 1}) => [
@@ -32,15 +33,19 @@ void main() {
   }) {
     requests = [];
     return CloudSyncService(
-      httpClient: MockClient((r) {
-        requests.add(r);
-        return handler(r);
-      }),
-      tokenProvider: token ?? () async => 'tok',
-      baseUrl: 'https://api.test',
+      api: ApiClient(
+        httpClient: MockClient((r) {
+          requests.add(r);
+          return handler(r);
+        }),
+        tokenProvider: token ?? () async => 'tok',
+        refreshToken: (_) async => null,
+        onUnauthorized: () async {},
+        baseUrl: 'https://api.test',
+        timeout: timeout,
+      ),
       now: () => clock,
       newSyncId: () => 'sync-${++idCounter}',
-      requestTimeout: timeout,
     );
   }
 

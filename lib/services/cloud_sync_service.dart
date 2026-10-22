@@ -5,9 +5,8 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
-import '../constants.dart';
 import '../models/cloud_entry.dart';
-import 'auth_service.dart';
+import 'api_client.dart';
 
 /// 一次上傳的結果類別
 enum CloudSyncStatus {
@@ -63,21 +62,15 @@ class CloudSyncProgress {
 }
 
 /// 把本機清單合併上傳到雲端（`POST /osu/beatmaps/merge`）。
-/// token 一律從 [AuthService] 取得。同一時間只會有一次上傳。
+/// 請求經 [ApiClient]（帶 token、401 時 refresh 重試）。同一時間只會有一次上傳。
 class CloudSyncService extends ChangeNotifier {
   CloudSyncService({
-    http.Client? httpClient,
-    Future<String?> Function()? tokenProvider,
-    String? baseUrl,
+    ApiClient? api,
     DateTime Function()? now,
     String Function()? newSyncId,
-    Duration? requestTimeout,
-  }) : _http = httpClient ?? http.Client(),
-       _token = tokenProvider ?? (() => AuthService.instance.accessToken()),
-       _baseUrl = baseUrl ?? kApiBase,
+  }) : _api = api ?? ApiClient.instance,
        _now = now ?? DateTime.now,
-       _newSyncId = newSyncId ?? _randomSyncId,
-       _timeout = requestTimeout ?? const Duration(seconds: 60);
+       _newSyncId = newSyncId ?? _randomSyncId;
 
   static final CloudSyncService instance = CloudSyncService();
 
@@ -87,12 +80,9 @@ class CloudSyncService extends ChangeNotifier {
   /// 後端對同一個 sync_id 的有效期（第一批之後這麼久）；重試沿用 sync_id 不能超過
   static const syncWindow = Duration(minutes: 10);
 
-  final http.Client _http;
-  final Future<String?> Function() _token;
-  final String _baseUrl;
+  final ApiClient _api;
   final DateTime Function() _now;
   final String Function() _newSyncId;
-  final Duration _timeout;
 
   CloudSyncProgress? _progress;
   String? _lastError;
@@ -188,31 +178,22 @@ class CloudSyncService extends ChangeNotifier {
     }
     for (var i = 0; i < entries.length; i += batchSize) {
       final batch = entries.sublist(i, min(i + batchSize, entries.length));
-      final token = await _token();
-      if (token == null) {
+      final http.Response resp;
+      try {
+        resp = await _api.send(
+          'POST',
+          '/osu/beatmaps/merge',
+          jsonBody: {
+            'trigger': trigger,
+            'sync_id': syncId,
+            'entries': [for (final e in batch) e.toJson()],
+          },
+        );
+      } on NotSignedInException {
         return const CloudSyncResult(
           CloudSyncStatus.unauthorized,
           message: '未登入或登入已失效，請重新登入',
         );
-      }
-      final http.Response resp;
-      try {
-        resp = await _http
-            .post(
-              Uri.parse('$_baseUrl/osu/beatmaps/merge'),
-              headers: {
-                'Authorization': 'Bearer $token',
-                'Content-Type': 'application/json; charset=utf-8',
-              },
-              body: utf8.encode(
-                jsonEncode({
-                  'trigger': trigger,
-                  'sync_id': syncId,
-                  'entries': [for (final e in batch) e.toJson()],
-                }),
-              ),
-            )
-            .timeout(_timeout);
       } catch (e) {
         return CloudSyncResult(
           CloudSyncStatus.failed,
