@@ -38,6 +38,8 @@ class CloudListPage extends StatefulWidget {
     this.canDelete = false,
     this.onDelete,
     this.onClear,
+    this.extraActionsBuilder,
+    this.canRetry,
   });
 
   final String title;
@@ -48,6 +50,12 @@ class CloudListPage extends StatefulWidget {
   final bool canDelete;
   final Future<CloudDeleteResult> Function(List<int> onlineIds)? onDelete;
   final Future<CloudDeleteResult> Function()? onClear;
+
+  /// 讀取成功後額外放在 AppBar 最右邊的動作（例如分享清單的「複製到我的雲端清單」）
+  final List<Widget> Function(CloudListResult result)? extraActionsBuilder;
+
+  /// 讀取失敗時是否顯示「重試」；預設一律顯示（例如連結已失效時重試沒有意義）
+  final bool Function(CloudListResult result)? canRetry;
 
   @override
   State<CloudListPage> createState() => _CloudListPageState();
@@ -224,7 +232,11 @@ class _CloudListPageState extends State<CloudListPage> {
         : 0;
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.title),
+        title: Text(
+          (result?.ownerUsername ?? '').isNotEmpty
+              ? '「${result!.ownerUsername}」的清單'
+              : widget.title,
+        ),
         bottom: ok
             ? PreferredSize(
                 preferredSize: const Size.fromHeight(52),
@@ -276,6 +288,7 @@ class _CloudListPageState extends State<CloudListPage> {
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Center(child: Text('共 $total 筆・本機缺 $missing 筆')),
             ),
+            ...?widget.extraActionsBuilder?.call(result),
           ],
         ],
       ),
@@ -296,12 +309,14 @@ class _CloudListPageState extends State<CloudListPage> {
               const Icon(Icons.cloud_off, size: 64, color: Colors.grey),
               const SizedBox(height: 12),
               SelectableText(result.message ?? '讀取失敗'),
-              const SizedBox(height: 16),
-              OutlinedButton.icon(
-                icon: const Icon(Icons.refresh),
-                label: const Text('重試'),
-                onPressed: _load,
-              ),
+              if (widget.canRetry?.call(result) ?? true) ...[
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('重試'),
+                  onPressed: _load,
+                ),
+              ],
             ],
           ),
         ),
