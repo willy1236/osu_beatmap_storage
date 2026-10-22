@@ -118,10 +118,12 @@ class _AccountTile extends StatelessWidget {
                     ),
                   ],
                 ),
-                _ => TextButton.icon(
-                  onPressed: auth.login,
-                  icon: const Icon(Icons.login, size: 18),
-                  label: const Text('登入'),
+                _ => Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.login),
+                    TextButton(onPressed: auth.login, child: const Text('登入')),
+                  ],
                 ),
               },
             ],
