@@ -213,6 +213,9 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
           title: '雲端清單',
           loader: CloudListService.instance.fetchMine,
           localIds: localIds,
+          canDelete: true,
+          onDelete: CloudListService.instance.deleteSome,
+          onClear: CloudListService.instance.clearAll,
         ),
       ),
     );

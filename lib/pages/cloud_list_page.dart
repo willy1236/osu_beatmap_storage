@@ -5,6 +5,9 @@ import '../services/cloud_list_service.dart';
 import '../services/download_service.dart';
 import '../widgets/csv_row_tile.dart';
 
+/// 刪除確認對話框都要帶的提示
+const kCloudDeleteHint = '本機還有的圖譜，下次上傳會再出現。';
+
 /// 依搜尋字串（標題、藝術家、製圖者，規則同 `CsvImportPage`）與「只看本機缺」過濾
 List<CloudEntry> filterCloudEntries(
   List<CloudEntry> entries, {
@@ -32,11 +35,19 @@ class CloudListPage extends StatefulWidget {
     required this.title,
     required this.loader,
     required this.localIds,
+    this.canDelete = false,
+    this.onDelete,
+    this.onClear,
   });
 
   final String title;
   final Future<CloudListResult> Function() loader;
   final Set<int> localIds;
+
+  /// 可刪除模式（自己的清單）；別人的分享清單不傳。需同時提供 [onDelete] 與 [onClear]
+  final bool canDelete;
+  final Future<CloudDeleteResult> Function(List<int> onlineIds)? onDelete;
+  final Future<CloudDeleteResult> Function()? onClear;
 
   @override
   State<CloudListPage> createState() => _CloudListPageState();
@@ -47,6 +58,7 @@ class _CloudListPageState extends State<CloudListPage> {
   bool _loading = true;
   String _search = '';
   bool _onlyMissing = false;
+  bool _deleting = false;
   final Set<int> _selected = {};
 
   @override
@@ -103,6 +115,103 @@ class _CloudListPageState extends State<CloudListPage> {
     setState(_selected.clear);
   }
 
+  Future<bool> _confirm({
+    required String title,
+    required String content,
+    bool danger = false,
+    String action = '刪除',
+  }) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Text(content),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: danger
+                ? FilledButton.styleFrom(backgroundColor: Colors.red)
+                : null,
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(action),
+          ),
+        ],
+      ),
+    );
+    return ok == true && mounted;
+  }
+
+  void _snack(String text) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+
+  Future<void> _deleteSelected() async {
+    final del = widget.onDelete;
+    if (del == null || _selected.isEmpty || _deleting) return;
+    final ids = _selected.toList();
+    if (!await _confirm(
+      title: '刪除雲端紀錄',
+      content: '確定要從雲端清單刪除 ${ids.length} 個圖譜集？\n$kCloudDeleteHint',
+    )) {
+      return;
+    }
+    setState(() => _deleting = true);
+    final r = await del(ids);
+    if (!mounted) return;
+    setState(() {
+      _deleting = false;
+      if (r.ok) {
+        final gone = ids.toSet();
+        _result = CloudListResult(
+          _result!.status,
+          entries: _result!.entries
+              .where((e) => !gone.contains(e.onlineId))
+              .toList(),
+          ownerUsername: _result!.ownerUsername,
+        );
+        _selected.removeAll(gone);
+      }
+    });
+    _snack(r.ok ? '已刪除 ${r.deleted} 個圖譜集' : (r.message ?? '刪除失敗'));
+  }
+
+  Future<void> _clearAll() async {
+    final clear = widget.onClear;
+    final total = _result?.entries.length ?? 0;
+    if (clear == null || total == 0 || _deleting) return;
+    if (!await _confirm(
+      title: '清空雲端清單',
+      content: '雲端清單共 $total 個圖譜集，將全部刪除。\n$kCloudDeleteHint',
+      action: '繼續',
+    )) {
+      return;
+    }
+    if (!await _confirm(
+      title: '再次確認',
+      content: '真的要清空整份雲端清單嗎？此操作無法復原，分享連結看到的清單也會跟著清空。',
+      danger: true,
+      action: '清空',
+    )) {
+      return;
+    }
+    setState(() => _deleting = true);
+    final r = await clear();
+    if (!mounted) return;
+    setState(() {
+      _deleting = false;
+      if (r.ok) {
+        _result = CloudListResult(
+          _result!.status,
+          ownerUsername: _result!.ownerUsername,
+        );
+        _selected.clear();
+      }
+    });
+    _snack(r.ok ? '已清空雲端清單（刪除 ${r.deleted} 個）' : (r.message ?? '清空失敗'));
+  }
+
   @override
   Widget build(BuildContext context) {
     final result = _result;
@@ -149,6 +258,20 @@ class _CloudListPageState extends State<CloudListPage> {
               tooltip: '下載勾選的圖譜（${_selected.length}）',
               onPressed: _selected.isEmpty ? null : _download,
             ),
+            if (widget.canDelete) ...[
+              IconButton(
+                icon: const Icon(Icons.delete_outline),
+                tooltip: '刪除勾選的圖譜（${_selected.length}）',
+                onPressed: _selected.isEmpty || _deleting
+                    ? null
+                    : _deleteSelected,
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_sweep),
+                tooltip: '清空雲端清單',
+                onPressed: total == 0 || _deleting ? null : _clearAll,
+              ),
+            ],
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Center(child: Text('共 $total 筆・本機缺 $missing 筆')),
