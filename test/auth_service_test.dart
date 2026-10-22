@@ -365,6 +365,59 @@ void main() {
       expect(auth.status, AuthStatus.reloginRequired);
     });
 
+    test('refreshAccessToken：強制 refresh；rejected 已不是目前 token 時不再送', () async {
+      final auth = await loggedIn();
+      final a = build(
+        (_) async => http.Response(
+          tokenBody(access: 'access-2', refresh: 'refresh-2'),
+          200,
+        ),
+      );
+      await a.init();
+      // token 還沒過期，accessToken() 不會 refresh；強制版會
+      expect(await a.accessToken(), 'access-1');
+      expect(await a.refreshAccessToken(rejected: 'access-1'), 'access-2');
+      expect(requests.length, 1);
+      // 另一個呼叫拿著舊的 rejected token：直接回目前的，不再送
+      expect(await a.refreshAccessToken(rejected: 'access-1'), 'access-2');
+      expect(requests.length, 1);
+      expect(auth.isLoggedIn, isTrue);
+    });
+
+    test('refreshAccessToken：並發只送一次；失效轉需要重新登入', () async {
+      await loggedIn();
+      final gate = Completer<void>();
+      final a = build((_) async {
+        await gate.future;
+        return http.Response(tokenBody(access: 'access-2'), 200);
+      });
+      await a.init();
+      final r = Future.wait([
+        a.refreshAccessToken(rejected: 'access-1'),
+        a.refreshAccessToken(rejected: 'access-1'),
+      ]);
+      gate.complete();
+      expect(await r, ['access-2', 'access-2']);
+      expect(requests.length, 1);
+
+      final bad = build(
+        (_) async => http.Response('{"error":"invalid_grant"}', 400),
+      );
+      await bad.init();
+      expect(await bad.refreshAccessToken(rejected: 'access-2'), isNull);
+      expect(bad.status, AuthStatus.reloginRequired);
+      expect(await bad.refreshAccessToken(), isNull);
+    });
+
+    test('markReloginRequired：清掉登入資料並轉成需要重新登入', () async {
+      final auth = await loggedIn();
+      await auth.markReloginRequired();
+      expect(auth.status, AuthStatus.reloginRequired);
+      expect(store.value, isNull);
+      expect(prefs.account, isNull);
+      expect(await auth.accessToken(), isNull);
+    });
+
     test('網路錯誤或 5xx 不登出', () async {
       await loggedIn();
       now = now.add(const Duration(hours: 2));

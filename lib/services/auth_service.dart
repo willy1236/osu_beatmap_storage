@@ -199,6 +199,30 @@ class AuthService extends ChangeNotifier {
     ).whenComplete(() => _refreshing = null);
   }
 
+  /// API 回 401（access token 被拒）時呼叫：強制 refresh 並回傳新的 access token。
+  /// [rejected] 是被拒絕的那個 token；若目前的 token 已經不是它（別的呼叫剛 refresh 過），
+  /// 直接回傳目前的，不再多送一次 refresh。與 [accessToken] 共用同一個 single-flight。
+  /// 未登入回 null；refresh 失敗回 null（refresh token 失效時已轉成需要重新登入）
+  Future<String?> refreshAccessToken({String? rejected}) {
+    final tokens = _tokens;
+    if (_status != AuthStatus.loggedIn || tokens == null) {
+      return Future.value(null);
+    }
+    if (rejected != null && tokens.access != rejected) {
+      return Future.value(tokens.access);
+    }
+    return _refreshing ??= _refresh(
+      tokens,
+    ).whenComplete(() => _refreshing = null);
+  }
+
+  /// 伺服器在新 token 下仍回 401（例如帳號被停權）時呼叫：清掉登入資料，轉成需要重新登入
+  Future<void> markReloginRequired() async {
+    if (_status != AuthStatus.loggedIn) return;
+    await _clear();
+    _setStatus(AuthStatus.reloginRequired);
+  }
+
   Future<String?> _refresh(_Tokens old) async {
     final http.Response resp;
     try {
