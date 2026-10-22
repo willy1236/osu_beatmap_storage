@@ -8,6 +8,7 @@ import '../models/cloud_entry.dart';
 import '../models/download_job.dart';
 import '../models/osu_realm_models.dart';
 import '../services/auth_service.dart';
+import '../services/cloud_list_service.dart';
 import '../services/cloud_sync_service.dart';
 import '../services/download_service.dart';
 import '../services/prefs_service.dart';
@@ -16,6 +17,7 @@ import '../utils/beatmap_csv.dart';
 import '../utils/csv_parser.dart';
 import '../widgets/beatmap_set_tile.dart';
 import '../widgets/csv_picker_dialog.dart';
+import 'cloud_list_page.dart';
 import 'csv_import_page.dart';
 import 'download_queue_page.dart';
 
@@ -195,6 +197,25 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
     if (text != null) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
     }
+  }
+
+  // ── 雲端清單 ───────────────────────────────────────────────────────────────
+
+  void _openCloudList() {
+    final localIds = {
+      for (final s in _beatmapSets)
+        if (s.onlineID > 0) s.onlineID,
+    };
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CloudListPage(
+          title: '雲端清單',
+          loader: CloudListService.instance.fetchMine,
+          localIds: localIds,
+        ),
+      ),
+    );
   }
 
   /// AppBar 下方的雲端上傳狀態：上傳中顯示細進度條，失敗時顯示一行說明
@@ -394,6 +415,16 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
                     : _uploadToCloud,
               );
             },
+          ),
+          ListenableBuilder(
+            listenable: AuthService.instance,
+            builder: (_, _) => AuthService.instance.isLoggedIn
+                ? IconButton(
+                    icon: const Icon(Icons.cloud_queue),
+                    tooltip: '雲端清單',
+                    onPressed: _openCloudList,
+                  )
+                : const SizedBox.shrink(),
           ),
           _importing
               ? const Padding(

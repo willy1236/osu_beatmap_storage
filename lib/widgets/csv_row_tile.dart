@@ -5,7 +5,21 @@ import 'download_button.dart';
 class CsvRowTile extends StatelessWidget {
   final CsvRow row;
 
-  const CsvRowTile({super.key, required this.row});
+  /// 以下三個是雲端清單頁用的可選項；不給時版面與行為與原本相同
+  /// 勾選框（[selected] 為 null 時不顯示）
+  final bool? selected;
+  final ValueChanged<bool?>? onSelectedChanged;
+
+  /// 放在下載按鈕前的標籤（例如「本機有／缺」）
+  final Widget? badge;
+
+  const CsvRowTile({
+    super.key,
+    required this.row,
+    this.selected,
+    this.onSelectedChanged,
+    this.badge,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -28,14 +42,7 @@ class CsvRowTile extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       child: ListTile(
-        leading: CircleAvatar(
-          radius: 18,
-          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-          child: Text(
-            mode.isNotEmpty ? mode : '♫',
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-          ),
-        ),
+        leading: _leading(context, mode),
         title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
         subtitle: Text(
           '$artist  ·  $status  ·  $diffCount 難度',
@@ -45,6 +52,7 @@ class CsvRowTile extends StatelessWidget {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            ?badge,
             if (starHigh.isNotEmpty)
               Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -102,6 +110,25 @@ class CsvRowTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _leading(BuildContext context, String mode) {
+    final avatar = CircleAvatar(
+      radius: 18,
+      backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+      child: Text(
+        mode.isNotEmpty ? mode : '♫',
+        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+      ),
+    );
+    if (selected == null) return avatar;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Checkbox(value: selected, onChanged: onSelectedChanged),
+        avatar,
+      ],
     );
   }
 }
