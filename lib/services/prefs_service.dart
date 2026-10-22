@@ -82,4 +82,41 @@ abstract final class PrefsService {
     data['skin_realm_id'] = id;
     await _write(data);
   }
+
+  /// 目前登入的析域帳號（sub 與域民代號），token 另存在安全儲存
+  static Future<({String sub, String username})?> getAuthAccount() async {
+    final data = await _read();
+    final sub = data['auth_sub'] as String?;
+    if (sub == null || sub.isEmpty) return null;
+    return (sub: sub, username: (data['auth_username'] as String?) ?? '');
+  }
+
+  /// 傳入 null 代表清除（登出或登入失效）
+  static Future<void> setAuthAccount(String? sub, String? username) async {
+    final data = await _read();
+    if (sub == null) {
+      data.remove('auth_sub');
+      data.remove('auth_username');
+    } else {
+      data['auth_sub'] = sub;
+      data['auth_username'] = username ?? '';
+    }
+    await _write(data);
+  }
+
+  /// 剛登出過：下一次登入要帶 prompt=login，讓域民可以換帳號。登入成功後清掉
+  static Future<bool> getAuthForceLogin() async {
+    final data = await _read();
+    return (data['auth_force_login'] as bool?) ?? false;
+  }
+
+  static Future<void> setAuthForceLogin(bool value) async {
+    final data = await _read();
+    if (value) {
+      data['auth_force_login'] = true;
+    } else {
+      data.remove('auth_force_login');
+    }
+    await _write(data);
+  }
 }

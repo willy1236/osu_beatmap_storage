@@ -13,3 +13,8 @@ const kStatusLabel = <int, String>{
   3: 'Qualified',
   4: 'Loved',
 };
+
+/// 析域帳號（Ory Hydra）的位置與桌面 client 的識別
+const kAuthIssuer = 'https://auth.domalyze.net';
+const kAuthClientId = 'osu-beatmap-storage';
+const kAuthScope = 'openid offline_access profile';
