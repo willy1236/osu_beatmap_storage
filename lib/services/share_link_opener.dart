@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app.dart' show appNavigatorKey;
 import '../pages/cloud_list_page.dart';
+import '../widgets/shared_copy_button.dart';
 import 'auth_service.dart';
 import 'local_library_service.dart';
 import 'shared_list_service.dart';
@@ -73,6 +74,10 @@ class ShareLinkOpener {
             title: '分享的清單',
             loader: () => _service.fetch(token),
             localIds: localIds!,
+            extraActionsBuilder: (r) => [
+              SharedCopyButton(token: token, count: r.entries.length),
+            ],
+            canRetry: (r) => !(r is SharedListResult && r.expired),
           ),
         ),
       );
