@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../widgets/share_dialog.dart';
 import 'beatmap_list_page.dart';
 import 'replay_list_page.dart';
 
@@ -136,6 +137,11 @@ class _AccountMenuButton extends StatelessWidget {
   const _AccountMenuButton();
 
   static final _items = <_AccountMenuItem>[
+    _AccountMenuItem(
+      Icons.share_outlined,
+      '分享我的清單',
+      (context) => showShareDialog(context),
+    ),
     // —— 新項目插入處（登出之前）——
   ];
 
