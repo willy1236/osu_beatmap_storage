@@ -102,22 +102,7 @@ class _AccountTile extends StatelessWidget {
                     ),
                   ],
                 ),
-                AuthStatus.loggedIn => Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.account_circle_outlined),
-                    Text(
-                      auth.username ?? '',
-                      style: textTheme,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    TextButton(
-                      onPressed: auth.logout,
-                      child: const Text('登出'),
-                    ),
-                  ],
-                ),
+                AuthStatus.loggedIn => const _AccountMenuButton(),
                 _ => Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -130,6 +115,82 @@ class _AccountTile extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// 帳號選單的一個可點項目
+class _AccountMenuItem {
+  const _AccountMenuItem(this.icon, this.label, this.onSelected);
+  final IconData icon;
+  final String label;
+  final void Function(BuildContext context) onSelected;
+}
+
+/// 已登入時的帳號區：點擊彈出選單，rail 上只顯示圖示與域民代號。
+///
+/// 新增選單項目（例如 T-05 的「自動上傳」、T-08 的「開啟分享連結」）：
+/// 在 [_items] 清單中加一個 [_AccountMenuItem]；登出固定在清單最後，
+/// 新項目請插在標示「新項目插入處」的位置。
+class _AccountMenuButton extends StatelessWidget {
+  const _AccountMenuButton();
+
+  static final _items = <_AccountMenuItem>[
+    // —— 新項目插入處（登出之前）——
+  ];
+
+  static final _logout = _AccountMenuItem(
+    Icons.logout,
+    '登出',
+    (_) => AuthService.instance.logout(),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = AuthService.instance;
+    final textTheme = Theme.of(context).textTheme.bodySmall;
+    final all = [..._items, _logout];
+    return PopupMenuButton<_AccountMenuItem>(
+      tooltip: '帳號選單',
+      position: PopupMenuPosition.over,
+      onSelected: (item) => item.onSelected(context),
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          enabled: false,
+          child: Text(
+            auth.username ?? '',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+        ),
+        const PopupMenuDivider(),
+        for (final item in all) ...[
+          if (identical(item, _logout) && _items.isNotEmpty)
+            const PopupMenuDivider(),
+          PopupMenuItem(
+            value: item,
+            child: Row(
+              children: [
+                Icon(item.icon, size: 20),
+                const SizedBox(width: 12),
+                Text(item.label),
+              ],
+            ),
+          ),
+        ],
+      ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.account_circle_outlined),
+          Text(
+            auth.username ?? '',
+            style: textTheme,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
     );
   }
 }
