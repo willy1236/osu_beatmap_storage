@@ -18,3 +18,6 @@ const kStatusLabel = <int, String>{
 const kAuthIssuer = 'https://auth.domalyze.net';
 const kAuthClientId = 'osu-beatmap-storage';
 const kAuthScope = 'openid offline_access profile';
+
+/// 析域 API（domalyze-api）的位置；osu 圖譜清單模組的路徑前綴是 /osu
+const kApiBase = 'https://api.domalyze.net';
