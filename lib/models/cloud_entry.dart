@@ -1,3 +1,6 @@
+import '../constants.dart';
+import '../utils/beatmap_csv.dart';
+import 'csv_row.dart';
 import 'osu_realm_models.dart';
 
 /// 雲端清單的一筆圖譜，對應後端契約的 BeatmapEntry
@@ -109,4 +112,38 @@ CloudEntry toCloudEntry(BeatmapSetInfo s) {
     dateAdded: s.dateAdded,
     dateSubmitted: s.dateSubmitted,
   );
+}
+
+/// 雲端清單用：把 [CloudEntry] 格式化成與 CSV 匯出相同的顯示字串（欄位名稱同 [kCsvHeader]），
+/// 讓 `CsvRowTile` 能直接顯示。
+extension CloudEntryDisplay on CloudEntry {
+  CsvRow toCsvRow() {
+    String ymd(DateTime d) => d.toLocal().toIso8601String().split('T').first;
+    String bpm() {
+      final lo = minBpm, hi = maxBpm;
+      if (lo == null || hi == null) return '';
+      final a = lo.toStringAsFixed(0), b = hi.toStringAsFixed(0);
+      return a == b ? a : '$a-$b';
+    }
+
+    final values = [
+      onlineId.toString(),
+      title,
+      titleUnicode,
+      artist,
+      artistUnicode,
+      creator,
+      kStatusLabel[status] ?? status.toString(),
+      difficultyCount.toString(),
+      modes.join('/'),
+      minStar?.toStringAsFixed(2) ?? '',
+      maxStar?.toStringAsFixed(2) ?? '',
+      bpm(),
+      ymd(dateAdded),
+      dateSubmitted == null ? '' : ymd(dateSubmitted!),
+    ];
+    return CsvRow({
+      for (var i = 0; i < kCsvHeader.length; i++) kCsvHeader[i]: values[i],
+    });
+  }
 }
