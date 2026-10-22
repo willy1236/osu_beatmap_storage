@@ -119,4 +119,23 @@ abstract final class PrefsService {
     }
     await _write(data);
   }
+
+  /// 開啟自動上傳的帳號 sub；等於目前登入的 sub 時代表開啟。
+  /// 登出時保留，換帳號後自然變成關閉
+  static Future<String?> getAutoUploadSub() async {
+    final data = await _read();
+    final sub = data['auto_upload_sub'] as String?;
+    return (sub == null || sub.isEmpty) ? null : sub;
+  }
+
+  /// 傳入 null 代表關閉
+  static Future<void> setAutoUploadSub(String? sub) async {
+    final data = await _read();
+    if (sub == null) {
+      data.remove('auto_upload_sub');
+    } else {
+      data['auto_upload_sub'] = sub;
+    }
+    await _write(data);
+  }
 }
