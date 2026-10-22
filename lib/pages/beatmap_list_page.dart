@@ -9,6 +9,7 @@ import '../models/osu_realm_models.dart';
 import '../services/download_service.dart';
 import '../services/prefs_service.dart';
 import '../services/realm_service.dart';
+import '../utils/beatmap_csv.dart';
 import '../utils/csv_parser.dart';
 import '../widgets/beatmap_set_tile.dart';
 import '../widgets/csv_picker_dialog.dart';
@@ -125,61 +126,10 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
       final sb = StringBuffer();
       // UTF-8 BOM，讓 Excel 正確辨識中文
       sb.write('\uFEFF');
-      sb.writeln(
-        _csvRow([
-          'OnlineID',
-          'Title',
-          'TitleUnicode',
-          'Artist',
-          'ArtistUnicode',
-          'Creator',
-          'Status',
-          '難度數',
-          '模式',
-          '最低星數',
-          '最高星數',
-          'BPM',
-          '加入日期',
-          '提交日期',
-        ]),
-      );
+      sb.writeln(_csvRow(kCsvHeader));
 
       for (final s in _beatmapSets) {
-        final meta = s.beatmaps.isNotEmpty ? s.beatmaps.first.metadata : null;
-        final stars =
-            s.beatmaps.map((b) => b.starRating).where((r) => r > 0).toList()
-              ..sort();
-        final modes = s.beatmaps
-            .map((b) => b.ruleset?.shortName ?? '?')
-            .toSet()
-            .join('/');
-        final bpms =
-            s.beatmaps.map((b) => b.bpm).where((b) => b > 0).toSet().toList()
-              ..sort();
-        final bpmStr = bpms.isEmpty
-            ? ''
-            : bpms.length == 1
-            ? bpms.first.toStringAsFixed(0)
-            : '${bpms.first.toStringAsFixed(0)}-${bpms.last.toStringAsFixed(0)}';
-
-        sb.writeln(
-          _csvRow([
-            s.onlineID.toString(),
-            meta?.title ?? '',
-            meta?.titleUnicode ?? '',
-            meta?.artist ?? '',
-            meta?.artistUnicode ?? '',
-            meta?.author?.username ?? '',
-            kStatusLabel[s.status] ?? s.status.toString(),
-            s.beatmaps.length.toString(),
-            modes,
-            stars.isEmpty ? '' : stars.first.toStringAsFixed(2),
-            stars.isEmpty ? '' : stars.last.toStringAsFixed(2),
-            bpmStr,
-            s.dateAdded.toLocal().toIso8601String().split('T').first,
-            s.dateSubmitted?.toLocal().toIso8601String().split('T').first ?? '',
-          ]),
-        );
+        sb.writeln(_csvRow(csvFieldsOf(s)));
       }
 
       final appDir = p.dirname(Platform.resolvedExecutable);
