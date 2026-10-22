@@ -4,8 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:realm/realm.dart';
 import '../constants.dart';
+import '../models/cloud_entry.dart';
 import '../models/download_job.dart';
 import '../models/osu_realm_models.dart';
+import '../services/auth_service.dart';
+import '../services/cloud_sync_service.dart';
 import '../services/download_service.dart';
 import '../services/prefs_service.dart';
 import '../services/realm_service.dart';
@@ -171,6 +174,60 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
   static String _csvRow(List<String> fields) =>
       fields.map((f) => '"${f.replaceAll('"', '""')}"').join(',');
 
+  // ── 上傳到雲端 ─────────────────────────────────────────────────────────────
+
+  Future<void> _uploadToCloud() async {
+    if (_beatmapSets.isEmpty || CloudSyncService.instance.uploading) return;
+    final entries = _beatmapSets.map(toCloudEntry).toList();
+    final result = await CloudSyncService.instance.upload(
+      entries,
+      trigger: 'manual',
+    );
+    if (!mounted) return;
+    // 失敗只顯示在狀態區（CloudSyncService.lastError），不彈窗
+    final text = switch (result.status) {
+      CloudSyncStatus.success =>
+        '已上傳到雲端：新增 ${result.inserted}、更新 ${result.updated}'
+            '${result.skipped > 0 ? '、略過 ${result.skipped}' : ''}',
+      CloudSyncStatus.rateLimited => '請稍後再試',
+      _ => null,
+    };
+    if (text != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+    }
+  }
+
+  /// AppBar 下方的雲端上傳狀態：上傳中顯示細進度條，失敗時顯示一行說明
+  Widget _cloudStatusStrip() {
+    return ListenableBuilder(
+      listenable: CloudSyncService.instance,
+      builder: (context, _) {
+        final cloud = CloudSyncService.instance;
+        final progress = cloud.progress;
+        if (progress != null) {
+          return LinearProgressIndicator(
+            value: progress.sent == 0 ? null : progress.fraction,
+            minHeight: 3,
+          );
+        }
+        final error = cloud.lastError;
+        if (error == null) return const SizedBox.shrink();
+        return Container(
+          width: double.infinity,
+          color: Theme.of(context).colorScheme.errorContainer,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Text(
+            error,
+            style: TextStyle(
+              fontSize: 12,
+              color: Theme.of(context).colorScheme.onErrorContainer,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   // ── 匯入 CSV ───────────────────────────────────────────────────────────────
 
   Future<void> _importCsv() async {
@@ -318,6 +375,26 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
                     tooltip: '匯出 CSV',
                     onPressed: _exportCsv,
                   ),
+          ListenableBuilder(
+            listenable: Listenable.merge([
+              AuthService.instance,
+              CloudSyncService.instance,
+            ]),
+            builder: (_, _) {
+              if (!AuthService.instance.isLoggedIn ||
+                  _loading ||
+                  _beatmapSets.isEmpty) {
+                return const SizedBox.shrink();
+              }
+              return IconButton(
+                icon: const Icon(Icons.cloud_upload),
+                tooltip: '上傳到雲端',
+                onPressed: CloudSyncService.instance.uploading
+                    ? null
+                    : _uploadToCloud,
+              );
+            },
+          ),
           _importing
               ? const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 12),
@@ -383,7 +460,12 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
           ),
         ],
       ),
-      body: _buildBody(),
+      body: Column(
+        children: [
+          _cloudStatusStrip(),
+          Expanded(child: _buildBody()),
+        ],
+      ),
     );
   }
 
