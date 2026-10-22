@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/auto_upload_service.dart';
+import '../widgets/open_share_link_dialog.dart';
 import '../widgets/share_dialog.dart';
 import 'beatmap_list_page.dart';
 import 'replay_list_page.dart';
@@ -159,6 +160,11 @@ class _AccountMenuButton extends StatelessWidget {
         !AutoUploadService.instance.enabled,
       ),
       checked: () => AutoUploadService.instance.enabled,
+    ),
+    _AccountMenuItem(
+      Icons.link,
+      '開啟分享連結',
+      (context) => showOpenShareLinkDialog(context),
     ),
     // —— 新項目插入處（登出之前）——
   ];
