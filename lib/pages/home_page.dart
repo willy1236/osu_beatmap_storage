@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../services/auto_upload_service.dart';
 import '../widgets/share_dialog.dart';
 import 'beatmap_list_page.dart';
 import 'replay_list_page.dart';
@@ -122,10 +123,19 @@ class _AccountTile extends StatelessWidget {
 
 /// 帳號選單的一個可點項目
 class _AccountMenuItem {
-  const _AccountMenuItem(this.icon, this.label, this.onSelected);
+  const _AccountMenuItem(
+    this.icon,
+    this.label,
+    this.onSelected, {
+    this.checked,
+  });
   final IconData icon;
   final String label;
   final void Function(BuildContext context) onSelected;
+
+  /// 非 null 時這是勾選型項目：選單開啟時呼叫它取得目前是否勾選，
+  /// 點擊後仍呼叫 [onSelected]（由它自行切換狀態）
+  final bool Function()? checked;
 }
 
 /// 已登入時的帳號區：點擊彈出選單，rail 上只顯示圖示與域民代號。
@@ -141,6 +151,14 @@ class _AccountMenuButton extends StatelessWidget {
       Icons.share_outlined,
       '分享我的清單',
       (context) => showShareDialog(context),
+    ),
+    _AccountMenuItem(
+      Icons.cloud_upload_outlined,
+      '自動上傳',
+      (_) => AutoUploadService.instance.setEnabled(
+        !AutoUploadService.instance.enabled,
+      ),
+      checked: () => AutoUploadService.instance.enabled,
     ),
     // —— 新項目插入處（登出之前）——
   ];
@@ -172,16 +190,23 @@ class _AccountMenuButton extends StatelessWidget {
         for (final item in all) ...[
           if (identical(item, _logout) && _items.isNotEmpty)
             const PopupMenuDivider(),
-          PopupMenuItem(
-            value: item,
-            child: Row(
-              children: [
-                Icon(item.icon, size: 20),
-                const SizedBox(width: 12),
-                Text(item.label),
-              ],
+          if (item.checked case final isChecked?)
+            CheckedPopupMenuItem(
+              value: item,
+              checked: isChecked(),
+              child: Text(item.label),
+            )
+          else
+            PopupMenuItem(
+              value: item,
+              child: Row(
+                children: [
+                  Icon(item.icon, size: 20),
+                  const SizedBox(width: 12),
+                  Text(item.label),
+                ],
+              ),
             ),
-          ),
         ],
       ],
       child: Column(

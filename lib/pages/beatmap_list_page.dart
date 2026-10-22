@@ -8,6 +8,7 @@ import '../models/cloud_entry.dart';
 import '../models/download_job.dart';
 import '../models/osu_realm_models.dart';
 import '../services/auth_service.dart';
+import '../services/auto_upload_service.dart';
 import '../services/cloud_list_service.dart';
 import '../services/cloud_sync_service.dart';
 import '../services/download_service.dart';
@@ -36,6 +37,8 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
   bool _exporting = false;
   bool _importing = false;
   bool _batchEnqueuing = false;
+  // 自動上傳只在程式開啟後第一次成功讀到清單時觸發，重新載入不再觸發
+  bool _autoUploadDone = false;
   String _searchQuery = '';
   String _osuDir = kDefaultOsuDir;
 
@@ -86,6 +89,13 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
         _beatmapSets = sets;
         _loading = false;
       });
+      if (!_autoUploadDone) {
+        _autoUploadDone = true;
+        // 不等待：靜默執行，進度與失敗由既有的雲端狀態列顯示
+        AutoUploadService.instance.runOnStartup(
+          () => sets.map(toCloudEntry).toList(),
+        );
+      }
     } catch (e) {
       setState(() {
         _error = e.toString();

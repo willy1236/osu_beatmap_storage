@@ -161,6 +161,19 @@ class AuthService extends ChangeNotifier {
   /// 程式啟動時呼叫：從安全儲存還原登入狀態。任何錯誤都當作未登入
   Future<void> init() async {
     try {
+      await _restore();
+    } finally {
+      if (!_ready.isCompleted) _ready.complete();
+    }
+  }
+
+  final Completer<void> _ready = Completer<void>();
+
+  /// [init] 結束（還原成功或失敗）後完成；供需要等登入狀態還原的呼叫端使用
+  Future<void> get ready => _ready.future;
+
+  Future<void> _restore() async {
+    try {
       final tokens = _Tokens.decode(await _store.read());
       final account = await _prefs.getAccount();
       if (tokens == null || account == null) {
