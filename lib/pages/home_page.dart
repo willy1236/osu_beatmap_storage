@@ -3,6 +3,7 @@ import '../services/auth_service.dart';
 import '../services/auto_upload_service.dart';
 import '../widgets/danser_setup_gate.dart';
 import '../widgets/open_share_link_dialog.dart';
+import '../widgets/settings_dialog.dart';
 import '../widgets/share_dialog.dart';
 import '../widgets/update_button.dart';
 import 'beatmap_list_page.dart';
@@ -43,7 +44,11 @@ class _HomePageState extends State<HomePage> {
                   padding: EdgeInsets.only(bottom: 12),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
-                    children: [UpdateButton(), _AccountTile()],
+                    children: [
+                      UpdateButton(),
+                      _SettingsButton(),
+                      _AccountTile(),
+                    ],
                   ),
                 ),
               ),
@@ -82,6 +87,20 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// NavigationRail 底部的設定入口，開啟設定對話框
+class _SettingsButton extends StatelessWidget {
+  const _SettingsButton();
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: '設定',
+      icon: const Icon(Icons.settings_outlined),
+      onPressed: () => showSettingsDialog(context),
     );
   }
 }
