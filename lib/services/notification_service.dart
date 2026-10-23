@@ -50,8 +50,6 @@ class NotificationService extends ChangeNotifier {
     for (final l in [_auth, _friends, _push]) {
       l.addListener(notifyListeners);
     }
-    _sub = _auth.isLoggedIn ? _auth.sub : null;
-    _auth.addListener(_onAuthChanged);
     _friends.addListener(_onFriendsChanged);
     _push.addListener(_onPushChanged);
     _realtime.resyncRequested.addListener(_onResync);
@@ -71,16 +69,17 @@ class NotificationService extends ChangeNotifier {
   late final List<void Function()> _cancels;
 
   /// 已經通知過的邀請（accountId）與推送（id），避免連續事件造成重複通知。
-  /// 該筆離開 incoming／inbox 時移除（拒絕後再邀仍會通知），登出或換帳號時清空
+  /// 該筆離開 incoming／inbox 時移除（拒絕後再邀仍會通知）。登出、換帳號時兩個 Service
+  /// 會清空列表，由此移除保證，不需另外清空
   final Set<String> _notifiedInvites = {};
   final Set<String> _notifiedPushes = {};
-  String? _sub;
 
-  /// 重連後的整份重讀（[FriendService]、[PushService] 自己做）進行中的標記。
-  /// 事件處理要先等它結束，才能取基準：斷線期間錯過的項目屬於重讀，不發通知，
-  /// 只有事件之後才出現的項目才發
-  final _ResyncGate _friendsResync = _ResyncGate();
-  final _ResyncGate _pushResync = _ResyncGate();
+  /// 重連（resyncRequested）當下 [FriendService]、[PushService] 在途的整份重讀
+  /// （含合併進來的再讀一次）。事件處理要先等它結束才取基準：斷線期間錯過的項目屬於重讀，
+  /// 不發通知，只有事件之後才出現的項目才發
+  Future<void>? _friendsResync;
+  Future<void>? _pushResync;
+  bool _disposed = false;
 
   /// 點通知後要切到的畫面；消費者處理完設回 null
   final ValueNotifier<NotificationTarget?> intent = ValueNotifier(null);
@@ -89,43 +88,36 @@ class NotificationService extends ChangeNotifier {
   int get badgeCount =>
       _auth.isLoggedIn ? _friends.incoming.length + _push.unreadCount : 0;
 
-  void _onAuthChanged() {
-    final sub = _auth.isLoggedIn ? _auth.sub : null;
-    if (sub == _sub) return;
-    _sub = sub;
-    _notifiedInvites.clear();
-    _notifiedPushes.clear();
-    _friendsResync.finish();
-    _pushResync.finish();
-  }
-
   void _onResync() {
     if (!_auth.isLoggedIn) return;
-    _friendsResync.arm(_friends.loading);
-    _pushResync.arm(_push.loading);
+    // 兩個 Service 各自訂閱同一個訊號並開始讀取；等同一輪的 Listener 都跑完再取在途的 Future
+    scheduleMicrotask(() {
+      if (_disposed) return;
+      _friendsResync = _friends.loadInFlight;
+      _pushResync = _push.loadInFlight;
+    });
   }
 
   void _onFriendsChanged() {
     _notifiedInvites.retainAll(
       _friends.incoming.map((p) => p.accountId.toLowerCase()),
     );
-    _friendsResync.update(_friends.loading);
   }
 
   void _onPushChanged() {
     _notifiedPushes.retainAll(_push.items.map((p) => p.id));
-    _pushResync.update(_push.loading);
   }
 
   Future<void> onFriendAdded() => _friends.refresh();
 
   Future<void> onFriendRequest() async {
-    await _friendsResync.pending;
+    await _friendsResync;
+    if (_disposed) return;
     final baseline = _friends.loaded
         ? _friends.incoming.map((p) => p.accountId.toLowerCase()).toSet()
         : null;
     await _friends.refresh();
-    if (baseline == null || !_auth.isLoggedIn) return;
+    if (_disposed || baseline == null || !_auth.isLoggedIn) return;
     for (final p in _friends.incoming) {
       final id = p.accountId.toLowerCase();
       if (baseline.contains(id) || !_notifiedInvites.add(id)) continue;
@@ -140,10 +132,11 @@ class NotificationService extends ChangeNotifier {
   }
 
   Future<void> onPush() async {
-    await _pushResync.pending;
+    await _pushResync;
+    if (_disposed) return;
     final baseline = _push.loaded ? _push.items.map((p) => p.id).toSet() : null;
     await _push.refresh();
-    if (baseline == null || !_auth.isLoggedIn) return;
+    if (_disposed || baseline == null || !_auth.isLoggedIn) return;
     for (final item in _push.items) {
       if (item.read ||
           baseline.contains(item.id) ||
@@ -180,49 +173,17 @@ class NotificationService extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     for (final c in _cancels) {
       c();
     }
     for (final l in [_auth, _friends, _push]) {
       l.removeListener(notifyListeners);
     }
-    _auth.removeListener(_onAuthChanged);
     _friends.removeListener(_onFriendsChanged);
     _push.removeListener(_onPushChanged);
     _realtime.resyncRequested.removeListener(_onResync);
-    _friendsResync.finish();
-    _pushResync.finish();
     intent.dispose();
     super.dispose();
-  }
-}
-
-/// 追蹤一次「重連整份重讀」從開始到結束：[arm] 後 [pending] 不為 null，
-/// 直到服務經歷「讀取中 → 讀取結束」才 [finish]
-class _ResyncGate {
-  Completer<void>? _done;
-  bool _sawLoading = false;
-
-  Future<void>? get pending => _done?.future;
-
-  void arm(bool loading) {
-    _done ??= Completer<void>();
-    _sawLoading = _sawLoading || loading;
-  }
-
-  void update(bool loading) {
-    if (_done == null) return;
-    if (loading) {
-      _sawLoading = true;
-    } else if (_sawLoading) {
-      finish();
-    }
-  }
-
-  void finish() {
-    final d = _done;
-    _done = null;
-    _sawLoading = false;
-    if (d != null && !d.isCompleted) d.complete();
   }
 }
