@@ -6,6 +6,7 @@ import 'app.dart';
 import 'services/app_link_service.dart';
 import 'services/auth_service.dart';
 import 'services/auto_upload_service.dart';
+import 'services/cloud_presence_service.dart';
 import 'services/protocol_registrar.dart';
 
 void main(List<String> args) {
@@ -21,6 +22,8 @@ void main(List<String> args) {
   AuthService.instance.init();
   // 不等待：先讀入自動上傳開關，帳號選單才不會在讀到清單前顯示成關閉
   AutoUploadService.instance.load();
+  // 盡早建立：登入還原後自動讀取雲端清單，供圖譜查看頁標示「已在雲端」
+  CloudPresenceService.instance;
   // 盡早開始接收連結（冷啟動的第一條連結會先暫存到開始監聽）
   AppLinkService.instance.start();
   // 不等待：註冊 osu-storage:// 指向目前的執行檔，失敗不影響程式

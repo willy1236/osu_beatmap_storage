@@ -85,8 +85,8 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
       final sets =
           realm.all<BeatmapSetInfo>().where((s) => !s.deletePending).toList()
             ..sort((a, b) => b.dateAdded.compareTo(a.dateAdded));
-      // 不等待：順便更新每列的「已在雲端」標示（未登入時不做事）
-      CloudPresenceService.instance.refresh();
+      // 不等待：重新載入或重選路徑時順便更新「已在雲端」標示；程式開啟時那次由登入還原觸發，不重複讀
+      if (!autoUpload) CloudPresenceService.instance.refresh();
       LocalLibraryService.instance.setOnlineIds({
         for (final s in sets)
           if (s.onlineID > 0) s.onlineID,
@@ -222,7 +222,14 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
       for (final s in _beatmapSets)
         if (s.onlineID > 0) s.onlineID,
     };
-    // 雲端清單頁可能刪除了紀錄，回來時重讀「已在雲端」標示
+    // 雲端清單頁有刪除成功時，回來後重讀「已在雲端」標示
+    var changed = false;
+    Future<CloudDeleteResult> track(Future<CloudDeleteResult> op) async {
+      final r = await op;
+      if (r.ok) changed = true;
+      return r;
+    }
+
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -231,11 +238,13 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
           loader: CloudListService.instance.fetchMine,
           localIds: localIds,
           canDelete: true,
-          onDelete: CloudListService.instance.deleteSome,
-          onClear: CloudListService.instance.clearAll,
+          onDelete: (ids) => track(CloudListService.instance.deleteSome(ids)),
+          onClear: () => track(CloudListService.instance.clearAll()),
         ),
       ),
-    ).then((_) => CloudPresenceService.instance.refresh());
+    ).then((_) {
+      if (changed) CloudPresenceService.instance.refresh();
+    });
   }
 
   /// AppBar 下方的雲端上傳狀態：上傳中顯示細進度條，失敗時顯示一行說明
