@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/csv_row.dart';
 import 'download_button.dart';
+import 'open_web_button.dart';
 
 class CsvRowTile extends StatelessWidget {
   final CsvRow row;
@@ -73,6 +74,7 @@ class CsvRowTile extends StatelessWidget {
                     ),
                 ],
               ),
+            OpenWebButton(onlineID: int.tryParse(row['OnlineID']) ?? 0),
             DownloadButton(
               onlineID: int.tryParse(row['OnlineID']) ?? 0,
               title: row['TitleUnicode'].isNotEmpty

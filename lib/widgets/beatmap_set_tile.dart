@@ -5,6 +5,7 @@ import 'beatmap_detail_sheet.dart';
 import 'cloud_presence_badge.dart';
 import 'download_button.dart';
 import 'mode_icon.dart';
+import 'open_web_button.dart';
 
 class BeatmapSetTile extends StatelessWidget {
   final BeatmapSetRow row;
@@ -49,6 +50,7 @@ class BeatmapSetTile extends StatelessWidget {
                     ),
                 ],
               ),
+            OpenWebButton(onlineID: row.onlineID),
             DownloadButton(onlineID: row.onlineID, title: row.title),
           ],
         ),
