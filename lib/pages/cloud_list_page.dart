@@ -249,7 +249,11 @@ class _CloudListPageState extends State<CloudListPage> {
                       border: OutlineInputBorder(),
                       isDense: true,
                     ),
-                    onChanged: (v) => setState(() => _search = v),
+                    // 篩選改變時清掉勾選，下載與刪除只作用在看得到的項目
+                    onChanged: (v) => setState(() {
+                      _search = v;
+                      _selected.clear();
+                    }),
                   ),
                 ),
               )
@@ -259,7 +263,10 @@ class _CloudListPageState extends State<CloudListPage> {
             FilterChip(
               label: const Text('只看本機缺'),
               selected: _onlyMissing,
-              onSelected: (v) => setState(() => _onlyMissing = v),
+              onSelected: (v) => setState(() {
+                _onlyMissing = v;
+                _selected.clear();
+              }),
             ),
             TextButton(
               onPressed: _selectAllMissing,
