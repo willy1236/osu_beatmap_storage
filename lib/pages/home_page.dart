@@ -208,7 +208,7 @@ class _AccountMenuButton extends StatelessWidget {
     ),
     _AccountMenuItem(
       Icons.link,
-      '開啟分享連結',
+      '開啟連結',
       (context) => showOpenShareLinkDialog(context),
     ),
     // —— 新項目插入處（登出之前）——

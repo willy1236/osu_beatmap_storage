@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/friend_list_opener.dart';
 import '../services/friend_service.dart';
+import '../widgets/invite_links_section.dart';
 import '../widgets/add_friend_dialog.dart';
 import '../services/push_service.dart';
 import '../widgets/friend_search.dart';
@@ -211,6 +212,7 @@ class _FriendsPageState extends State<FriendsPage> {
               ),
             ],
           ),
+        const InviteLinksSection(),
       ],
     );
   }
