@@ -4,6 +4,7 @@ import 'dart:convert';
 import '../models/cloud_entry.dart';
 import 'api_client.dart';
 import 'cloud_list_service.dart' show CloudListResult;
+import 'cloud_presence_service.dart';
 import 'cloud_sync_service.dart' show CloudSyncStatus;
 
 /// 分享連結無效、已撤銷或已重新產生時的說明
@@ -43,11 +44,16 @@ class SharedCopyResult {
 /// 用分享連結讀取、複製別人的清單（`/osu/shared/{token}`）。HTTP 一律走 [ApiClient]，
 /// 不丟例外，結果看回傳值的 status。
 class SharedListService {
-  SharedListService({ApiClient? api}) : _api = api ?? ApiClient.instance;
+  SharedListService({ApiClient? api, void Function()? onCopied})
+    : _api = api ?? ApiClient.instance,
+      _onCopied = onCopied ?? (() => CloudPresenceService.instance.refresh());
 
   static final SharedListService instance = SharedListService();
 
   final ApiClient _api;
+
+  /// 複製成功後呼叫（預設重讀「已在雲端」標示）；放在 service 裡，關掉頁面也不會漏
+  final void Function() _onCopied;
 
   /// `GET /osu/shared/{token}`：擁有者目前的代號與整份清單
   Future<SharedListResult> fetch(String token) async {
@@ -99,6 +105,12 @@ class SharedListService {
   /// `POST /osu/shared/{token}/copy`：把對方整份清單併進自己的清單（對方清單不變）。
   /// 後端每分鐘限一次，被擋時回 [CloudSyncStatus.rateLimited]。
   Future<SharedCopyResult> copyToMine(String token) async {
+    final r = await _copy(token);
+    if (r.ok) _onCopied();
+    return r;
+  }
+
+  Future<SharedCopyResult> _copy(String token) async {
     try {
       final resp = await _api.send('POST', '${_path(token)}/copy');
       if (resp.statusCode == 404) {

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../services/cloud_presence_service.dart';
 import '../services/cloud_sync_service.dart' show CloudSyncStatus;
 import '../services/shared_list_service.dart';
 
@@ -57,7 +56,6 @@ class _SharedCopyButtonState extends State<SharedCopyButton> {
     );
     if (!mounted) return;
     setState(() => _busy = false);
-    if (r.ok) CloudPresenceService.instance.refresh();
     final text = switch (r.status) {
       CloudSyncStatus.success => '已複製：新增 ${r.inserted} 筆、更新 ${r.updated} 筆',
       CloudSyncStatus.rateLimited => '請稍後再試',

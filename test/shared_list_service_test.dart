@@ -14,9 +14,11 @@ void main() {
   SharedListService make(
     Future<http.Response> Function(http.Request) handler, {
     String? token = 't',
+    void Function()? onCopied,
   }) {
     requests = [];
     return SharedListService(
+      onCopied: onCopied ?? () {},
       api: ApiClient(
         httpClient: MockClient((r) {
           requests.add(r);
@@ -125,6 +127,20 @@ void main() {
       expect(r.updated, 2);
       expect(requests.single.method, 'POST');
       expect(requests.single.url.path, '/osu/shared/abc/copy');
+    });
+
+    test('成功才通知已複製（重讀雲端標示），失敗不通知', () async {
+      var copied = 0;
+      await make(
+        (_) async => json({'inserted': 1, 'updated': 0}),
+        onCopied: () => copied++,
+      ).copyToMine('a');
+      expect(copied, 1);
+      await make(
+        (_) async => json({'err': 'rate_limited'}, 429),
+        onCopied: () => copied++,
+      ).copyToMine('a');
+      expect(copied, 1);
     });
 
     test('429 -> 請稍後再試', () async {
