@@ -22,15 +22,21 @@ class FakeStore implements AuthTokenStore {
 }
 
 class FakePrefs implements AuthPrefs {
-  ({String sub, String username})? account;
+  ({String sub, String username, String? picture})? account;
   bool force = false;
 
   @override
-  Future<({String sub, String username})?> getAccount() async => account;
+  Future<({String sub, String username, String? picture})?>
+  getAccount() async => account;
 
   @override
-  Future<void> setAccount(String? sub, String? username) async =>
-      account = sub == null ? null : (sub: sub, username: username ?? '');
+  Future<void> setAccount(
+    String? sub,
+    String? username, {
+    String? picture,
+  }) async => account = sub == null
+      ? null
+      : (sub: sub, username: username ?? '', picture: picture);
 
   @override
   Future<bool> getForceLogin() async => force;
@@ -49,11 +55,16 @@ String tokenBody({
   String access = 'access-1',
   String? refresh = 'refresh-1',
   int expiresIn = 3600,
+  Object? picture,
 }) => jsonEncode({
   'access_token': access,
   'refresh_token': ?refresh,
   'expires_in': expiresIn,
-  'id_token': jwt({'sub': 'acc-1', 'preferred_username': '小明'}),
+  'id_token': jwt({
+    'sub': 'acc-1',
+    'preferred_username': '小明',
+    'picture': ?picture,
+  }),
 });
 
 void main() {
@@ -109,7 +120,9 @@ void main() {
   Future<AuthService> loggedIn() async {
     final auth = build(
       (_) async => http.Response(tokenBody(), 200),
-      openBrowser: browser((u) => {'code': 'c', 'state': u.queryParameters['state']!}),
+      openBrowser: browser(
+        (u) => {'code': 'c', 'state': u.queryParameters['state']!},
+      ),
     );
     await auth.login();
     expect(auth.status, AuthStatus.loggedIn);
@@ -132,7 +145,8 @@ void main() {
       expect(auth.isLoggedIn, isTrue);
       expect(auth.sub, 'acc-1');
       expect(auth.username, '小明');
-      expect(prefs.account, (sub: 'acc-1', username: '小明'));
+      expect(prefs.account, (sub: 'acc-1', username: '小明', picture: null));
+      expect(auth.picture, isNull);
       expect(store.value, contains('refresh-1'));
       expect(await auth.accessToken(), 'access-1');
 
@@ -158,10 +172,12 @@ void main() {
     test('瀏覽器取消（access_denied）回到未登入', () async {
       final auth = build(
         (_) async => fail('不應呼叫 token endpoint'),
-        openBrowser: browser((u) => {
-          'error': 'access_denied',
-          'state': u.queryParameters['state']!,
-        }),
+        openBrowser: browser(
+          (u) => {
+            'error': 'access_denied',
+            'state': u.queryParameters['state']!,
+          },
+        ),
       );
       await auth.login();
       expect(auth.status, AuthStatus.loggedOut);
@@ -207,7 +223,9 @@ void main() {
     test('token endpoint 回錯誤時回到未登入', () async {
       final auth = build(
         (_) async => http.Response('{}', 500),
-        openBrowser: browser((u) => {'code': 'c', 'state': u.queryParameters['state']!}),
+        openBrowser: browser(
+          (u) => {'code': 'c', 'state': u.queryParameters['state']!},
+        ),
       );
       await auth.login();
       expect(auth.status, AuthStatus.loggedOut);
@@ -219,10 +237,55 @@ void main() {
     test('沒拿到 refresh token 視為失敗', () async {
       final auth = build(
         (_) async => http.Response(tokenBody(refresh: null), 200),
-        openBrowser: browser((u) => {'code': 'c', 'state': u.queryParameters['state']!}),
+        openBrowser: browser(
+          (u) => {'code': 'c', 'state': u.queryParameters['state']!},
+        ),
       );
       await auth.login();
       expect(auth.status, AuthStatus.loggedOut);
+    });
+  });
+
+  group('picture', () {
+    Future<AuthService> loginWith(Object? picture) async {
+      final auth = build(
+        (_) async => http.Response(tokenBody(picture: picture), 200),
+        openBrowser: browser(
+          (u) => {'code': 'c', 'state': u.queryParameters['state']!},
+        ),
+      );
+      await auth.login();
+      return auth;
+    }
+
+    test('id_token 帶 picture：存進 prefs，重開程式後還原，登出清除', () async {
+      final auth = await loginWith('https://img.test/a.png');
+      expect(auth.picture, 'https://img.test/a.png');
+      expect(prefs.account?.picture, 'https://img.test/a.png');
+
+      final reopened = build((_) async => fail('不應連線'));
+      await reopened.init();
+      expect(reopened.picture, 'https://img.test/a.png');
+
+      await auth.logout();
+      expect(auth.picture, isNull);
+      expect(prefs.account, isNull);
+    });
+
+    test('沒有 picture 或空字串視為 null', () async {
+      expect((await loginWith(null)).picture, isNull);
+      expect((await loginWith('')).picture, isNull);
+      expect(prefs.account?.picture, isNull);
+    });
+
+    test('舊 prefs（沒有 picture 欄位）仍可還原登入', () async {
+      final seeded = await loginWith(null);
+      expect(seeded.isLoggedIn, isTrue);
+      prefs.account = (sub: 'acc-1', username: '小明', picture: null);
+      final reopened = build((_) async => fail('不應連線'));
+      await reopened.init();
+      expect(reopened.isLoggedIn, isTrue);
+      expect(reopened.picture, isNull);
     });
   });
 
@@ -258,7 +321,9 @@ void main() {
     test('撤銷失敗仍會登出', () async {
       final auth = build(
         (_) async => http.Response(tokenBody(), 200),
-        openBrowser: browser((u) => {'code': 'c', 'state': u.queryParameters['state']!}),
+        openBrowser: browser(
+          (u) => {'code': 'c', 'state': u.queryParameters['state']!},
+        ),
       );
       await auth.login();
       final failing = AuthService(
@@ -293,7 +358,7 @@ void main() {
 
     test('token 資料損毀時當作未登入', () async {
       store.value = 'not json';
-      prefs.account = (sub: 's', username: 'u');
+      prefs.account = (sub: 's', username: 'u', picture: null);
       final auth = build((_) async => fail('不應連線'));
       await auth.init();
       expect(auth.status, AuthStatus.loggedOut);
@@ -499,10 +564,7 @@ void main() {
               await oldGate.future;
               return http.Response(tokenBody(access: 'old-2'), 200);
             }
-            return http.Response(
-              tokenBody(access: 'access-$tokenCalls'),
-              200,
-            );
+            return http.Response(tokenBody(access: 'access-$tokenCalls'), 200);
           }
           return http.Response('', 200);
         },

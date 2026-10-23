@@ -4,6 +4,7 @@ import '../services/notification_service.dart';
 import '../widgets/danser_setup_gate.dart';
 import '../widgets/count_badge.dart';
 import '../widgets/open_share_link_dialog.dart';
+import '../widgets/peer_avatar.dart';
 import '../widgets/settings_dialog.dart';
 import '../widgets/share_dialog.dart';
 import '../widgets/update_button.dart';
@@ -274,9 +275,9 @@ class _AccountMenuButton extends StatelessWidget {
         ],
       ],
       // 代號只顯示在選單標題列，rail 上只留圖示
-      child: const Padding(
-        padding: EdgeInsets.all(8),
-        child: Icon(Icons.account_circle_outlined),
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: PeerAvatar(picture: auth.picture, radius: 14),
       ),
     );
   }

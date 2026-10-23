@@ -18,12 +18,18 @@ class _Store implements AuthTokenStore {
 }
 
 class _Prefs implements AuthPrefs {
-  ({String sub, String username})? account;
+  ({String sub, String username, String? picture})? account;
   @override
-  Future<({String sub, String username})?> getAccount() async => account;
+  Future<({String sub, String username, String? picture})?>
+  getAccount() async => account;
   @override
-  Future<void> setAccount(String? sub, String? username) async =>
-      account = sub == null ? null : (sub: sub, username: username ?? '');
+  Future<void> setAccount(
+    String? sub,
+    String? username, {
+    String? picture,
+  }) async => account = sub == null
+      ? null
+      : (sub: sub, username: username ?? '', picture: picture);
   @override
   Future<bool> getForceLogin() async => false;
   @override
@@ -61,7 +67,7 @@ void main() {
   );
 
   Future<AuthService> loggedIn([String sub = 'A']) async {
-    prefs.account = (sub: sub, username: 'u');
+    prefs.account = (sub: sub, username: 'u', picture: null);
     store.value = jsonEncode({
       'access': 'tok-$sub',
       'refresh': 'r',
@@ -86,7 +92,8 @@ void main() {
     backoff: (_) => const Duration(milliseconds: 5),
   );
 
-  Future<void> settle() => Future<void>.delayed(const Duration(milliseconds: 60));
+  Future<void> settle() =>
+      Future<void>.delayed(const Duration(milliseconds: 60));
 
   test('未登入：不連線', () async {
     final r = make(makeAuth());
