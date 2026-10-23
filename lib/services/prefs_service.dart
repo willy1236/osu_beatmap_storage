@@ -138,4 +138,30 @@ abstract final class PrefsService {
     }
     await _write(data);
   }
+
+  /// 關閉視窗時的行為：`ask`（每次詢問，預設）、`tray`（縮到系統匣）、`exit`（結束程式）。
+  /// 讀到不認得的值一律當作 `ask`
+  static Future<String> getCloseAction() async {
+    final data = await _read();
+    final v = data['close_action'];
+    return (v == 'tray' || v == 'exit') ? v as String : 'ask';
+  }
+
+  static Future<void> setCloseAction(String action) async {
+    final data = await _read();
+    data['close_action'] = action;
+    await _write(data);
+  }
+
+  /// 是否開機自動啟動（預設關閉）
+  static Future<bool> getLaunchAtStartup() async {
+    final data = await _read();
+    return (data['launch_at_startup'] as bool?) ?? false;
+  }
+
+  static Future<void> setLaunchAtStartup(bool value) async {
+    final data = await _read();
+    data['launch_at_startup'] = value;
+    await _write(data);
+  }
 }
