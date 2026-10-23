@@ -71,11 +71,10 @@ void main() {
     expect(result.status, CloudSyncStatus.success);
     expect(result.inserted, 3000); // mock 每批回 1000
     expect(requests.length, 3);
-    expect(requests.map((r) => body(r)['entries'].length).toList(), [
-      1000,
-      1000,
-      500,
-    ]);
+    expect(
+      requests.map((r) => body(r)['entries'].length).toList(),
+      [1000, 1000, 500],
+    );
     for (final r in requests) {
       expect(r.url.toString(), 'https://api.test/osu/beatmaps/merge');
       expect(r.headers['Authorization'], 'Bearer tok');
@@ -107,8 +106,11 @@ void main() {
 
   test('429：標為被頻率限制擋下，帶 Retry-After，不算錯誤', () async {
     final svc = make(
-      (r) async =>
-          json(429, {'err': 'rate_limited'}, headers: {'retry-after': '42'}),
+      (r) async => json(
+        429,
+        {'err': 'rate_limited'},
+        headers: {'retry-after': '42'},
+      ),
     );
     final result = await svc.upload(entries(3), trigger: 'manual');
     expect(result.status, CloudSyncStatus.rateLimited);
@@ -117,7 +119,9 @@ void main() {
   });
 
   test('503 unavailable：暫時失敗並記錄錯誤', () async {
-    final svc = make((r) async => json(503, {'err': 'unavailable'}));
+    final svc = make(
+      (r) async => json(503, {'err': 'unavailable'}),
+    );
     final result = await svc.upload(entries(3), trigger: 'auto');
     expect(result.status, CloudSyncStatus.unavailable);
     expect(svc.lastError, isNotNull);

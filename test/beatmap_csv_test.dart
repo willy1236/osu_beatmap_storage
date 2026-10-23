@@ -87,14 +87,11 @@ void main() {
   final fixtures = <String, BeatmapSetInfo>{
     '無 beatmaps': set(1, []),
     'metadata 為 null、ruleset 為 null': set(2, [bm(3.456, 180)]),
-    '星數全為 0、BPM 為 0': set(3, [bm(0, 0, rs: ruleset('osu'), meta: metaOf())]),
+    '星數全為 0、BPM 為 0': set(3, [
+      bm(0, 0, rs: ruleset('osu'), meta: metaOf()),
+    ]),
     'BPM 單值': set(4, [
-      bm(
-        2.0,
-        150,
-        rs: ruleset('osu'),
-        meta: metaOf(author: '製圖者'),
-      ),
+      bm(2.0, 150, rs: ruleset('osu'), meta: metaOf(author: '製圖者')),
       bm(5.5, 150, rs: ruleset('osu')),
     ]),
     'BPM 兩個不同值': set(5, [

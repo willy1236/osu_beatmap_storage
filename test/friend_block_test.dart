@@ -119,8 +119,9 @@ void main() {
 
     test('blocked_by_you 提示請先解除封鎖', () async {
       final (s, _) = await make();
-      be.override = (r) =>
-          r.method == 'POST' ? jsonResp({'err': 'blocked_by_you'}, 409) : null;
+      be.override = (r) => r.method == 'POST'
+          ? jsonResp({'err': 'blocked_by_you'}, 409)
+          : null;
       final r = await s.sendViaShare('tok');
       expect(r.code, 'blocked_by_you');
       expect(r.message, '你已封鎖這位域民，請先到封鎖名單解除封鎖');
