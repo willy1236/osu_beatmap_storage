@@ -24,6 +24,8 @@ class _ShareDialogState extends State<ShareDialog> {
   String? _token;
   // 是否確定知道目前有沒有連結；讀取失敗時不知道，不能提供「產生連結」以免繞過重新產生的確認
   bool _known = false;
+  // 未登入或登入已失效：重試沒有用，只顯示錯誤訊息
+  bool _unauthorized = false;
   String? _error;
   String? _notice;
 
@@ -44,6 +46,7 @@ class _ShareDialogState extends State<ShareDialog> {
     if (!mounted) return;
     setState(() {
       _loading = false;
+      _unauthorized = r.status == ShareStatus.unauthorized;
       switch (r.status) {
         case ShareStatus.ok:
           _token = clearOnOk ? null : r.token;
@@ -118,9 +121,9 @@ class _ShareDialogState extends State<ShareDialog> {
               const Text('拿到連結的域民可以瀏覽並下載你的圖譜清單。'),
               const SizedBox(height: 12),
               SelectableText(link),
-            ] else if (!_known)
-              const Text('無法讀取目前的分享連結，請重試。')
-            else
+            ] else if (!_known) ...[
+              if (!_unauthorized) const Text('無法讀取目前的分享連結，請重試。'),
+            ] else
               const Text('目前沒有分享連結。產生後，拿到連結的域民可以瀏覽並下載你的圖譜清單。'),
             if (_error != null)
               Padding(
@@ -152,12 +155,13 @@ class _ShareDialogState extends State<ShareDialog> {
             onPressed: _loading ? null : () => _copy(link),
             child: const Text('複製'),
           ),
-        ] else if (!_known)
-          FilledButton(
-            onPressed: _loading ? null : () => _run(_service.fetch()),
-            child: const Text('重試'),
-          )
-        else
+        ] else if (!_known) ...[
+          if (!_unauthorized)
+            FilledButton(
+              onPressed: _loading ? null : () => _run(_service.fetch()),
+              child: const Text('重試'),
+            ),
+        ] else
           FilledButton(
             onPressed: _loading ? null : _regenerate,
             child: const Text('產生連結'),

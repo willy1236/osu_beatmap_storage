@@ -217,6 +217,27 @@ void main() {
       expect(find.text('osu-storage://share/tok1'), findsOneWidget);
     });
 
+    testWidgets('未登入時只顯示錯誤，不提供重試或產生連結', (t) async {
+      final calls = <String>[];
+      final s = ShareService(
+        api: ApiClient(
+          httpClient: MockClient((r) async {
+            calls.add(r.method);
+            return http.Response('', 200);
+          }),
+          tokenProvider: () async => null,
+          refreshToken: (_) async => null,
+          onUnauthorized: () async {},
+          baseUrl: 'https://api.test',
+        ),
+      );
+      await pump(t, s);
+      expect(find.text('重試'), findsNothing);
+      expect(find.text('產生連結'), findsNothing);
+      expect(find.textContaining('請重試'), findsNothing);
+      expect(calls, isEmpty);
+    });
+
     testWidgets('撤銷要確認，成功後回到沒有連結', (t) async {
       final calls = <String>[];
       await pump(t, svc(calls, initial: 'abc'));
