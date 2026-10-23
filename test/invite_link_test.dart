@@ -146,7 +146,7 @@ void main() {
         (422, 'cannot_friend_self', '不能使用自己的邀請連結'),
         (409, 'already_friends', '你們已經是好友'),
         (409, 'friend_limit', '好友已達上限'),
-        (409, 'blocked_by_you', '你已封鎖這位域民'),
+        (409, 'blocked_by_you', '你已封鎖這位域民，請先到封鎖名單解除封鎖'),
       ]) {
         be.override = (_) => jsonResp({'err': code}, status);
         final r = await s.accept('tok');
