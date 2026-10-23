@@ -14,6 +14,7 @@ class FriendPeer {
     required this.username,
     this.picture,
     this.time,
+    this.playing = false,
     this.canBrowse = false,
   });
 
@@ -26,6 +27,9 @@ class FriendPeer {
   /// 好友列表為成為好友的時間，邀請列表為送出時間
   final DateTime? time;
 
+  /// 正在遊玩 osu!lazer；只有好友列表會有，對方關掉上線狀態時一律 false
+  final bool playing;
+
   /// 對方開放好友瀏覽清單（`/osu/friends/browsable`）；只有好友列表會帶，預設 false
   final bool canBrowse;
 
@@ -34,7 +38,17 @@ class FriendPeer {
     username: username,
     picture: picture,
     time: time,
+    playing: playing,
     canBrowse: v,
+  );
+
+  FriendPeer withPlaying(bool v) => FriendPeer(
+    accountId: accountId,
+    username: username,
+    picture: picture,
+    time: time,
+    playing: v,
+    canBrowse: canBrowse,
   );
 
   String get displayName => username.isEmpty ? '（未知的域民）' : username;
@@ -46,6 +60,7 @@ class FriendPeer {
       username: j['username'] as String? ?? '',
       picture: (pic == null || pic.isEmpty) ? null : pic,
       time: DateTime.tryParse(j[timeKey] as String? ?? ''),
+      playing: j['playing'] == true,
     );
   }
 }
@@ -130,6 +145,15 @@ class FriendService extends ChangeNotifier {
     if (has(_outgoing)) return FriendRelation.outgoing;
     if (has(_incoming)) return FriendRelation.incoming;
     return FriendRelation.none;
+  }
+
+  /// 套用 SSE `presence` 事件：更新好友的遊玩狀態，不重讀。不是好友或沒變就忽略
+  void setPlaying(String accountId, bool playing) {
+    final id = _norm(accountId);
+    final i = _friends.indexWhere((p) => _norm(p.accountId) == id);
+    if (i < 0 || _friends[i].playing == playing) return;
+    _friends = [..._friends]..[i] = _friends[i].withPlaying(playing);
+    notifyListeners();
   }
 
   /// 重新讀取好友與邀請；讀取中再次呼叫時，等這次結束後再讀一次

@@ -211,4 +211,34 @@ void main() {
     expect(conns, hasLength(1));
     r.dispose();
   });
+
+  test('connected：每次連上都通知（含第一次），斷線不通知，isConnected 跟著變', () async {
+    final r = make(await loggedIn());
+    var n = 0;
+    r.connected.addListener(() => n++);
+    await settle();
+    expect(n, 1);
+    expect(r.isConnected, isTrue);
+    await conns[0].end();
+    await settle();
+    expect(conns.length, greaterThanOrEqualTo(2));
+    expect(n, 2);
+    expect(r.isConnected, isTrue);
+    r.dispose();
+  });
+
+  test('connected：401 不算連上；登出後 isConnected 為 false', () async {
+    statuses = [401];
+    final auth = await loggedIn();
+    final r = make(auth);
+    var n = 0;
+    r.connected.addListener(() => n++);
+    await settle();
+    expect(n, 1); // 第一次 401，重試後才連上
+    expect(r.isConnected, isTrue);
+    await auth.logout();
+    await settle();
+    expect(r.isConnected, isFalse);
+    r.dispose();
+  });
 }
