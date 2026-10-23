@@ -38,8 +38,6 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
   bool _exporting = false;
   bool _importing = false;
   bool _batchEnqueuing = false;
-  // 自動上傳只在程式開啟後第一次成功讀到清單時觸發，重新載入不再觸發
-  bool _autoUploadDone = false;
   String _searchQuery = '';
   String _osuDir = kDefaultOsuDir;
 
@@ -61,7 +59,7 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
     }
     final path = await PrefsService.getOsuDir();
     setState(() => _osuDir = path);
-    _loadRealm();
+    _loadRealm(autoUpload: true);
   }
 
   @override
@@ -72,7 +70,8 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
 
   // ── 載入 Realm ─────────────────────────────────────────────────────────────
 
-  Future<void> _loadRealm() async {
+  /// [autoUpload] 只有程式開啟時的那次載入為 true；那次失敗後重新載入或重選路徑都不觸發自動上傳
+  Future<void> _loadRealm({bool autoUpload = false}) async {
     setState(() {
       _loading = true;
       _error = null;
@@ -94,8 +93,7 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
         _beatmapSets = sets;
         _loading = false;
       });
-      if (!_autoUploadDone) {
-        _autoUploadDone = true;
+      if (autoUpload) {
         // 不等待：靜默執行，進度與失敗由既有的雲端狀態列顯示
         AutoUploadService.instance.runOnStartup(
           () => sets.map(toCloudEntry).toList(),
