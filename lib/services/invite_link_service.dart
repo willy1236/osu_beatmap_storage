@@ -242,7 +242,7 @@ class InviteLinkService extends ChangeNotifier {
         'already_friends' => '你們已經是好友',
         'friend_limit' => '好友已達上限',
         'cannot_friend_self' => '不能使用自己的邀請連結',
-        'blocked_by_you' => '你已封鎖這位域民',
+        'blocked_by_you' => '你已封鎖這位域民，請先到封鎖名單解除封鎖',
         'invite_link_limit' => '未使用的邀請連結最多 $kMaxInviteLinks 條，請先撤銷不用的',
         'unauthorized' => '登入已失效，請重新登入',
         'rate_limited' => '操作太頻繁，請稍後再試',
