@@ -51,6 +51,8 @@ class RealtimeService {
   late final Duration Function(int attempt) _backoff;
 
   final _resync = _Signal();
+  final _connected = _Signal();
+  bool _isConnected = false;
   final Map<String, Set<RealtimeHandler>> _handlers = {};
 
   String? _sub;
@@ -59,6 +61,13 @@ class RealtimeService {
 
   /// 重連成功時通知；訂閱者整份重新讀取
   Listenable get resyncRequested => _resync;
+
+  /// 每次連上（包含同一次登入的第一次連線）時通知；斷線不通知。
+  /// 後端在沒有 SSE 連線時會把「遊玩中」視同 idle，所以需要連線才算數的回報要在這裡補送
+  Listenable get connected => _connected;
+
+  /// 目前是否有一條已建立的連線；斷線、登出、換帳號後為 false
+  bool get isConnected => _isConnected;
 
   /// 訂閱事件型別（SSE 的 `event:` 欄位）；回傳取消訂閱的函式
   void Function() on(String type, RealtimeHandler handler) {
@@ -91,6 +100,7 @@ class RealtimeService {
     _generation++;
     _client?.close();
     _client = null;
+    _isConnected = false;
   }
 
   Future<void> _run(int gen) async {
@@ -119,12 +129,15 @@ class RealtimeService {
         attempt = 0;
         if (everConnected) _resync.fire();
         everConnected = true;
+        _isConnected = true;
+        _connected.fire();
         await _read(resp.stream, gen);
         // 串流正常結束（例如後端重新部署）也當成斷線
       } catch (e) {
         if (gen != _generation) return;
         debugPrint('Realtime 連線中斷：$e');
       } finally {
+        if (gen == _generation) _isConnected = false;
         client?.close();
         if (identical(_client, client)) _client = null;
       }
@@ -186,6 +199,7 @@ class RealtimeService {
     _auth.removeListener(_onAuthChanged);
     _stop();
     _resync.dispose();
+    _connected.dispose();
   }
 }
 
