@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:osu_beatmap_storage/services/auth_service.dart';
 import 'package:osu_beatmap_storage/services/friend_service.dart';
 import 'package:osu_beatmap_storage/services/lazer_detector.dart';
 import 'package:osu_beatmap_storage/services/notification_service.dart';
