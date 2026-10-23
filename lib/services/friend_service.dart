@@ -193,7 +193,12 @@ class FriendService extends ChangeNotifier {
         browsable = r[2] as Set<String>;
         for (final resp in r.take(2).cast<http.Response>()) {
           if (resp.statusCode != 200) {
-            err = _errorFor(resp.statusCode, _errCode(resp), '讀取失敗').$2;
+            err = _errorFor(
+              resp.statusCode,
+              _errCode(resp),
+              '讀取失敗',
+              reading: true,
+            ).$2;
           }
         }
         if (err == null) {
@@ -334,7 +339,12 @@ class FriendService extends ChangeNotifier {
     try {
       final resp = await _api.send('GET', '/social/blocks');
       if (resp.statusCode != 200) {
-        err = _errorFor(resp.statusCode, _errCode(resp), '讀取失敗').$2;
+        err = _errorFor(
+          resp.statusCode,
+          _errCode(resp),
+          '讀取失敗',
+          reading: true,
+        ).$2;
       } else {
         blocks = _peers(_decode(resp)['blocks'], 'created_at');
       }
@@ -427,6 +437,7 @@ class FriendService extends ChangeNotifier {
     String? err,
     String what, {
     String notFound = '找不到這筆資料',
+    bool reading = false,
   }) {
     final code =
         err ??
@@ -443,7 +454,8 @@ class FriendService extends ChangeNotifier {
         'already_friends' => '你們已經是好友',
         'friend_limit' => '好友已達上限',
         'cannot_friend_self' => '不能對自己送邀請',
-        'rate_limited' => '今天送出的邀請太多，請稍後再試',
+        // 讀取列表被限流與「送邀請太多」無關，文案分開
+        'rate_limited' => reading ? '請求太頻繁，請稍後再試' : '今天送出的邀請太多，請稍後再試',
         'blocked_by_you' => '你已封鎖這位域民，請先到封鎖名單解除封鎖',
         'cannot_block_self' => '不能封鎖自己',
         'not_found' => notFound,

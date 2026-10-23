@@ -154,6 +154,16 @@ void main() {
       expect(r.code, 'rate_limited');
     });
 
+    test('讀取列表遇 429：用一般的限流文案，不說邀請太多', () async {
+      final (s, _) = await make();
+      be.override = (r) =>
+          r.method == 'GET' ? jsonResp({'err': 'rate_limited'}, 429) : null;
+      await s.refresh();
+      expect(s.error, '請求太頻繁，請稍後再試');
+      await s.refreshBlocks();
+      expect(s.blocksError, '請求太頻繁，請稍後再試');
+    });
+
     test('失敗後仍重讀列表', () async {
       final (s, _) = await make();
       be.calls.clear();
