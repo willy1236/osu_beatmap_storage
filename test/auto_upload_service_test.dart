@@ -178,6 +178,14 @@ void main() {
     expect(auto.enabled, isFalse);
   });
 
+  test('toggle：尚未 load 時依設定檔的狀態取反', () async {
+    saved = 'A';
+    final auto = makeAuto(await loggedInAs('A'));
+    await auto.toggle();
+    expect(saved, isNull);
+    expect(auto.enabled, isFalse);
+  });
+
   test('未登入時 setEnabled 不寫入', () async {
     final auto = makeAuto(makeAuth());
     await auto.setEnabled(true);

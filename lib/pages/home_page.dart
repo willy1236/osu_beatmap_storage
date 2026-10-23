@@ -156,9 +156,7 @@ class _AccountMenuButton extends StatelessWidget {
     _AccountMenuItem(
       Icons.cloud_upload_outlined,
       '自動上傳',
-      (_) => AutoUploadService.instance.setEnabled(
-        !AutoUploadService.instance.enabled,
-      ),
+      (_) => AutoUploadService.instance.toggle(),
       checked: () => AutoUploadService.instance.enabled,
     ),
     _AccountMenuItem(

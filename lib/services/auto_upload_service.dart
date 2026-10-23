@@ -65,6 +65,12 @@ class AutoUploadService extends ChangeNotifier {
     }
   }
 
+  /// 切換目前登入域民的自動上傳；先讀完設定檔，以免依未載入的狀態取反
+  Future<void> toggle() async {
+    await load();
+    await setEnabled(!enabled);
+  }
+
   /// 程式開啟、第一次讀到本機清單後呼叫。
   /// 等登入狀態還原後，若已登入且開啟了自動上傳才上傳；
   /// 未登入、未開啟、被頻率限制擋下都靜默跳過（回傳 null 或對應結果）。
