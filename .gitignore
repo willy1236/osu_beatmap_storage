@@ -123,6 +123,7 @@ app.*.symbols
 
 *.pyc
 *.txt
+!CMakeLists.txt
 build
 help.spec
 node_modules
