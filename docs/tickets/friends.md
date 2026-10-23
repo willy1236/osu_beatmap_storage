@@ -94,8 +94,9 @@ flowchart LR
 - 錯誤碼除了卡上列的四個，另補 `blocked_by_you`、`not_found`、`unavailable` 的提示文字。
 - 送出邀請後一律重讀 `/social/requests`，不樂觀更新。對方已封鎖送出者時，後端會回假的 `sent`，列表以重讀結果為準。
 - 對方已邀請我時，按鈕仍顯示「加好友」，按下後兩人互送，直接成為好友。
+- 審查修正：429 提示只有送出邀請（`sendViaShare`、`sendToAccount`）顯示「今天送出的邀請太多，請稍後再試」；其他操作與讀取列表顯示「請求太頻繁，請稍後再試」。
 
-**進度**：實作完成（2026-10-23）。單元／widget 測試已過；全套 CI、獨立審查與人工驗證待做
+**進度**：實作完成（2026-10-23）。單元／widget 測試已過；全套 CI（376 tests、`flutter build windows` 成功、analyze 無新增）與三輪獨立審查已完成並修正；人工驗證待做
 - commit：f70bf98、f8ad185、9af091a、118500a、d8ff7a5（feat/friends）
 - 未驗：A、B 兩個帳號對真實後端的端到端：驗收 1（B 重新整理後「收到的邀請」出現 A）、驗收 2（B 接受後雙方好友列表）
 
@@ -127,7 +128,7 @@ flowchart LR
 - 查到的人已先邀請我時，顯示「對方已邀請你，按確認將直接成為好友」並允許送出。
 - 查到的人已在「送出的邀請」時，顯示「已送出邀請，等待對方回應」並停用確認。
 
-**進度**：實作完成（2026-10-23）。單元／widget 測試已過；全套 CI、獨立審查與人工驗證待做
+**進度**：實作完成（2026-10-23）。單元／widget 測試已過；全套 CI（376 tests、`flutter build windows` 成功、analyze 無新增）與三輪獨立審查已完成並修正；人工驗證待做
 - commit：ec90418、9178909、261be44、3a9cbfc、9a08ea2（feat/friends）
 - 未驗：真實後端端到端；加好友對話框的頭像顯示沒有測試
 
@@ -165,9 +166,10 @@ flowchart LR
 - 登入暫存邏輯複製一份到 `FriendLinkOpener`，`ShareLinkOpener` 不動。
 - 邀請連結的 API 放新檔 `lib/services/invite_link_service.dart`，`friend_service.dart` 不動。
 - 確認前先比對自己的連結與已是好友的情況，先行提示，不呼叫 accept。
-- `InviteLinkService` 的 `blocked_by_you` 提示為「你已封鎖這位域民」，與 `FriendService` 的「你已封鎖這位域民，請先到封鎖名單解除封鎖」不一致，待審查時統一。
+- 審查修正：`InviteLinkService.refresh` 改為 `_running`／`_again` 合併，讀取中的重讀不再被吞掉。
+- `blocked_by_you` 提示已統一為「你已封鎖這位域民，請先到封鎖名單解除封鎖」，與 `FriendService` 一致（原「文案不一致」已解決）。
 
-**進度**：實作完成（2026-10-23）。單元／widget 測試已過；全套 CI、獨立審查與人工驗證待做
+**進度**：實作完成（2026-10-23）。單元／widget 測試已過；全套 CI（376 tests、`flutter build windows` 成功、analyze 無新增）與三輪獨立審查已完成並修正；人工驗證待做
 - commit：c8fe198、40bd036、a2ca450、9f63f7c、79dccf5、40c8765（feat/friends）
 - 未驗：真實後端端到端：驗收 1（雙方好友列表）、驗收 2（A 的未使用連結列表不再出現）、驗收 8（被擁有者封鎖者用連結）；併發 accept；程式已開啟時點 friend 連結，由既有執行個體接手
 
@@ -198,8 +200,9 @@ flowchart LR
 - 分享清單頁新增「封鎖擁有者」按鈕，按下先確認。封鎖後以 SnackBar 顯示「已封鎖」，頁面不顯示已封鎖狀態，也不改 `FriendRelation`。沒有 `ownerAccountId` 或擁有者是自己時不顯示這個按鈕。
 - 封鎖名單從好友頁 AppBar 的按鈕開獨立頁，進頁才讀取。名單不顯示封鎖時間，因為後端不回。
 - `blocked_by_you` 的提示為「你已封鎖這位域民，請先到封鎖名單解除封鎖」。後端另有 `cannot_block_self`，提示為「不能封鎖自己」。
+- 審查修正：429 提示與 T-01 相同，只有送出邀請說「邀請太多」，刪除好友、封鎖等操作用「請求太頻繁，請稍後再試」。
 
-**進度**：實作完成（2026-10-23）。單元／widget 測試已過；全套 CI、獨立審查與人工驗證待做
+**進度**：實作完成（2026-10-23）。單元／widget 測試已過；全套 CI（376 tests、`flutter build windows` 成功、analyze 無新增）與三輪獨立審查已完成並修正；人工驗證待做
 - commit：90c877a、f8b828e、318e603、6d7193b、3b4b8c4、97945c7（feat/friends）
 - 未驗：真實後端端到端：驗收 1（對方的好友列表不再出現我、先前推送仍在收件匣）、驗收 4（被封鎖者送邀請與用連結的結果）、驗收 7（被封鎖者仍能用分享連結看清單）
 
@@ -236,8 +239,9 @@ flowchart LR
 - `/osu/friends/browsable` 讀取失敗時視為沒有人開放，好友列表照常載入，不報錯。
 - 從好友列表開清單時，不跳「尚未載入本機圖譜」確認對話框。
 - `FriendsPage` 每次開頁一律重讀。
+- 審查修正：好友頁常駐在 `IndexedStack`，`initState` 只跑一次，所以改由 `HomePage` 切到好友頁時（含點通知、重按已選中的好友頁）呼叫 `FriendService.refresh()`；`FriendsPage.initState` 不再重讀。
 
-**進度**：實作完成（2026-10-23）。單元／widget 測試已過；全套 CI、獨立審查與人工驗證待做
+**進度**：實作完成（2026-10-23）。單元／widget 測試已過；全套 CI（376 tests、`flutter build windows` 成功、analyze 無新增）與三輪獨立審查已完成並修正；人工驗證待做
 - commit：63a8fc9、ecb81da、d69c87c、e593521、91b7ca9（feat/friends）
 - 未驗：雙帳號與真實後端端到端：驗收 2 的真後端 429 訊息、驗收 3（B 關掉公開後入口消失與「無法瀏覽」）、驗收 5（公開開關與分享連結互不影響）
 
@@ -280,8 +284,9 @@ flowchart LR
 - 好友頁的收件匣圖示不顯示未讀紅點，歸 T-09。
 - 從收件匣點開一筆推送的 `CloudListPage`，標題為「<代號> 的推送」。
 - 圖譜查看頁勾選模式下，推送全部已勾選的圖譜，包含被搜尋暫時隱藏的。這與 `CloudListPage` 的行為不同，待使用者確認是否要統一。
+- 審查修正：`PushService` 訂閱 `resyncRequested`，重連時整份重讀。`markRead` 與在途 `refresh` 競態時，以 `_readHold` 保留已讀，成功後補讀一次。
 
-**進度**：實作完成（2026-10-23）。單元／widget 測試已過；全套 CI、獨立審查與人工驗證待做
+**進度**：實作完成（2026-10-23）。單元／widget 測試已過；全套 CI（376 tests、`flutter build windows` 成功、analyze 無新增）與三輪獨立審查已完成並修正；人工驗證待做
 - commit：a7e3cea、5e74ee3、922e7c0、c008eab、7fb2d79、59ab8e9（feat/friends）
 - 未驗：雙帳號端到端：驗收 1（每位好友的收件匣出現這筆推送）、驗收 6（雙方刪除好友後推送仍在）；驗收 2 的圖譜查看頁勾選模式與推送沒有頁面層級的測試，只有勾選列元件測試；勾選模式推送的範圍待使用者確認（見實作決定最後一條）
 
@@ -325,8 +330,10 @@ flowchart LR
 - 設定對話框用 `SettingsEntry` 清單組成，T-06、T-10 的開關以加項目的方式放入，不改對話框本身。
 - 「風險 / 實作注意」第一條的結論：app_links 的 `SendAppLinkToInstance` 在沒有連結參數時，也會找到隱藏中的視窗並還原，所以 `windows/runner/main.cpp` 不需要改。實測再執行 exe 會還原原視窗。
 - 後續事項：`PrefsService` 的 read-modify-write 沒有鎖，有競態；系統匣圖示的 asset 路徑依賴 `flutter_assets` 的目錄結構。
+- 側欄底部只留設定齒輪與帳號頭像，自動上傳也搬進設定對話框（未登入時停用並顯示「登入後才能設定」）。
+- 審查修正：`TrayService.start({minimized})`；系統匣初始化失敗只記 log、程式照常啟動；開機自動啟動時初始化失敗，改為顯示視窗，避免程式無視窗也無圖示。
 
-**進度**：實作完成（2026-10-23）。單元／widget 測試已過；全套 CI、獨立審查與人工驗證待做
+**進度**：實作完成（2026-10-23）。單元／widget 測試已過；全套 CI（376 tests、`flutter build windows` 成功、analyze 無新增）與三輪獨立審查已完成並修正；人工驗證待做
 - commit：63d6b4e、e3f9726、25e451d、4e5e465、ecd0a2e、7a0578a、3eabe47、7b1cc00、f953f93（feat/friends）
 - 未驗：實機操作：驗收 2（系統匣圖示、點擊還原、右鍵結束）、驗收 4（重開機後自動啟動且縮在系統匣）、驗收 5（縮在系統匣時點連結或再執行 exe 會還原既有視窗）；首次關閉詢問的實際畫面；最大化後隱藏再還原
 
@@ -340,12 +347,12 @@ flowchart LR
 
 **驗收條件**
 - [ ] 程式開著時（含縮在系統匣），收到新的好友邀請或推送後幾秒內跳出 Windows 通知，內容含對方代號；推送通知含附言開頭
-- [ ] 對方接受我的邀請後，我的好友列表幾秒內出現對方，不用手動重新整理
-- [ ] 側欄「好友」入口出現紅點，好友頁的「收到的邀請」「收件匣」顯示數量
+- [x] 對方接受我的邀請後，我的好友列表幾秒內出現對方，不用手動重新整理
+- [x] 側欄「好友」入口出現紅點，好友頁的「收到的邀請」「收件匣」顯示數量
 - [ ] 點通知會還原視窗並切到對應分頁
-- [ ] 處理完邀請、推送都標為已讀後，紅點消失
-- [ ] 程式沒開期間收到的內容，下次開啟只顯示紅點，不跳 Windows 通知
-- [ ] 未登入時不顯示紅點
+- [x] 處理完邀請、推送都標為已讀後，紅點消失
+- [x] 程式沒開期間收到的內容，下次開啟只顯示紅點，不跳 Windows 通知
+- [x] 未登入時不顯示紅點
 
 **實作設計**
 - 前端
@@ -357,7 +364,21 @@ flowchart LR
 
 **依賴**：T-07（推送與未讀數；T-07 已依賴 T-01 的邀請）、T-08（縮在系統匣時的行為與還原視窗）、T-12（即時通道）
 
-**進度**：未完成
+**實作決定**
+- 〔使用者〕toast 套件用 `local_notifier ^0.1.6`，以 `ToastPlatform` 抽象包起來；第一次 `show` 才 `setup(appName: 'osu! Beatmap Viewer')`，點擊或關閉後 `destroy`。
+- 〔使用者〕好友頁沒有分頁，卡上「切到對應分頁」「分頁標題帶數量」改解讀為：邀請通知切到好友頁並捲到「收到的邀請」，推送通知切到好友頁並開 `InboxPage`；「收到的邀請」header 原本就帶 (n)，收件匣圖示加 `Badge`。
+- 〔使用者〕側欄好友 `Badge` 的數字為收到的邀請數加未讀推送數，超過 99 顯示 `99+`；未登入為 0。
+- 〔使用者〕通知文案：邀請標題「{代號} 想加你為好友」、內文「點擊查看收到的邀請」；推送標題「{代號} 推送了圖譜給你」、內文為附言前 40 字（超過加 …），無附言時為「N 張圖譜」。每個事件各發一則；視窗在前景也發。
+- 〔使用者〕點通知時若最上層是對話框或彈出選單，只還原視窗，不切頁也不 pop（避免輸入中的內容消失）；上層是一般頁面時，先 `popUntil` 回首頁層再切過去。
+- 〔主〕不依賴 SSE payload 的內容：收到 `friend_request`、`push` 後，先記下重讀前的 id 集合，`refresh` 完以差集決定通知；推送只通知未讀；列表尚未載入時只重讀不通知。
+- 〔實作〕已通知集合只由列表變動時的 prune 維護（該筆離開 incoming／inbox 就移除），換帳號時列表清空，集合隨之清掉。
+- 〔實作〕重連重讀：`FriendService`、`PushService` 各自訂閱 `resyncRequested` 整份重讀（`PresenceService` 不再負責）。`NotificationService` 在重連時取兩者的 `loadInFlight`（在途讀取的 Future），事件處理先等它結束再取基準，所以斷線期間的項目不發 toast。已知限制：新項目若在重連重讀的 GET 之前就已存在於伺服器，會被當作斷線期間的項目，只顯示紅點。
+- 〔實作〕`NotificationService.intent`（`ValueNotifier<NotificationTarget?>`，值為 invites／inbox）：點通知後先 `TrayService.restore()` 再設 intent，`HomePage` 切頁、`FriendsPage` 消費。
+
+**進度**：實作完成（2026-10-23）。單元／widget 測試已過；全套 CI（376 tests、`flutter build windows` 成功、analyze 無新增）與三輪獨立審查已完成並修正；人工驗證待做
+- commit：cd2b809、8ca80dc、8b83b56、6b6174d（feat/t09-notifications，已併入 feat/friends）；審查修正 7a1a74c、bfc79a5、a8bc48b、50f6b70、727ff3b、11970cf
+- 已驗證（測試）：驗收 2、3、5、6、7 有單元／widget 測試；驗收 1、4 程式完成且有測試，但實機與雙帳號端到端未驗，故未勾
+- 未驗（待人工）：toast 外觀與 AppUserModelID（開發版可能顯示預設名稱）、Focus Assist；縮在系統匣時收到通知與點通知還原；開著對話框時點通知只還原視窗；斷網恢復後紅點更新且不跳 toast；換帳號後同一人再邀會再通知
 
 ### T-10 好友看得到我正在玩 osu!lazer，好友列表能搜尋、排序
 
@@ -394,7 +415,7 @@ flowchart LR
 - `win32`、`ffi` 宣告為直接依賴，沿用 lock 檔的版本。
 - 上線狀態開關放在 T-08 的設定對話框。
 
-**進度**：實作完成（2026-10-23）。單元／widget 測試已過；全套 CI、獨立審查與人工驗證待做
+**進度**：實作完成（2026-10-23）。單元／widget 測試已過；全套 CI（376 tests、`flutter build windows` 成功、analyze 無新增）與三輪獨立審查已完成並修正；人工驗證待做
 - commit：23bd53d、ba454be、242d154、29e4b53、4a4e934（feat/friends）
 - 未驗：雙帳號端到端：驗收 1（B 幾秒內看到 A 遊玩中並排最前）、驗收 2（A 關掉 lazer 或程式後消失，異常結束時逾時消失）、驗收 4（A 關掉上線狀態後 B 不顯示）；程式縮在系統匣時偵測 Timer 是否照跑；好友列表一列同時有遊玩中、看清單、選單時的版面
 
@@ -410,7 +431,7 @@ flowchart LR
 - [x] 登入後程式一直保持一條連線；登出或換帳號時斷開，換帳號後連到新帳號
 - [x] 後端發的事件幾秒內分派給訂閱該型別的處理者
 - [x] 斷網或後端重啟後自動重連（退避重試加隨機抖動），重連成功後發出「需要重新讀取」訊號
-- [ ] access token refresh 後，下次重連用新的 token
+- [x] access token refresh 後，下次重連用新的 token
 - [x] 連線失敗不彈窗、不影響其他功能
 
 **實作設計**
@@ -431,10 +452,11 @@ flowchart LR
 - 串流正常結束（EOF）也視為斷線並重連。
 - `RealtimeService.instance` 在 `main.dart` 建立。
 - 換帳號的測試用兩個獨立的 `AuthService` 模擬。
+- 審查修正：計時測試改用 `fake_async`（idle 計時改由自管 Timer），補「refresh 後用新 token 重連」「同一實例換帳號」測試。原註記的測試弱點與計時 flaky 已解決。
 
-**進度**：實作完成（2026-10-23）。單元／widget 測試已過；全套 CI、獨立審查與人工驗證待做
+**進度**：實作完成（2026-10-23）。單元／widget 測試已過；全套 CI（376 tests、`flutter build windows` 成功、analyze 無新增）與三輪獨立審查已完成並修正；人工驗證待做
 - commit：3ed755f、cdd82ac、3202afa（feat/friends）
-- 未驗：經 Cloudflare Tunnel 閒置 5 分鐘是否被切斷（後端要求實測回報）；睡眠喚醒後重連；驗收 4（refresh 後用新 token 重連）的測試沒有直接驗證新 token，只驗證 401 後重連不轉成需要重新登入；計時測試在並行負載下偶發失敗，全套 CI 時處理
+- 未驗：經 Cloudflare Tunnel 閒置 5 分鐘是否被切斷（後端要求實測回報）；睡眠喚醒後重連
 
 ## 開工前待決
 
