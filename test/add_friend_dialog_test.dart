@@ -147,6 +147,17 @@ void main() {
       expect(r.ok, isFalse);
       expect(r.message, '你們已經是好友');
     });
+    test('404 not_found 顯示找不到這位域民（不是泛用失敗）', () async {
+      final auth = makeAuth();
+      await auth.init();
+      be.override = (r) =>
+          r.method == 'POST' ? jsonResp({'err': 'not_found'}, 404) : null;
+      final s = FriendService(api: be.api, auth: auth);
+      final r = await s.sendToAccount(bId);
+      expect(r.ok, isFalse);
+      expect(r.code, 'not_found');
+      expect(r.message, '找不到這位域民');
+    });
   });
 
   group('加好友對話框', () {
