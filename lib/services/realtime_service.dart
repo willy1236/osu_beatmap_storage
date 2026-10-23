@@ -147,30 +147,61 @@ class RealtimeService {
   }
 
   Future<void> _read(Stream<List<int>> bytes, int gen) async {
-    final lines = bytes
-        .transform(utf8.decoder)
-        .transform(const LineSplitter())
-        .timeout(_idleTimeout);
+    final lines = bytes.transform(utf8.decoder).transform(const LineSplitter());
     var event = 'message';
     final data = <String>[];
-    await for (final line in lines) {
-      if (gen != _generation) return;
-      if (line.isEmpty) {
-        if (data.isNotEmpty) _dispatch(event, data.join('\n'));
-        event = 'message';
-        data.clear();
-        continue;
-      }
-      if (line.startsWith(':')) continue; // 註解行（心跳）
-      final i = line.indexOf(':');
-      final field = i < 0 ? line : line.substring(0, i);
-      var value = i < 0 ? '' : line.substring(i + 1);
-      if (value.startsWith(' ')) value = value.substring(1);
-      if (field == 'event') {
-        event = value;
-      } else if (field == 'data') {
-        data.add(value);
-      }
+    final finished = Completer<void>();
+    // 自己管閒置計時（不用 Stream.timeout），每收到一行（含心跳註解）就重置
+    Timer? idle;
+    void arm() {
+      idle?.cancel();
+      idle = Timer(_idleTimeout, () {
+        if (!finished.isCompleted) {
+          finished.completeError(
+            TimeoutException('閒置逾時，沒有收到任何資料', _idleTimeout),
+          );
+        }
+      });
+    }
+
+    final sub = lines.listen(
+      (line) {
+        if (gen != _generation) {
+          if (!finished.isCompleted) finished.complete();
+          return;
+        }
+        arm();
+        if (line.isEmpty) {
+          if (data.isNotEmpty) _dispatch(event, data.join('\n'));
+          event = 'message';
+          data.clear();
+          return;
+        }
+        if (line.startsWith(':')) return; // 註解行（心跳）
+        final i = line.indexOf(':');
+        final field = i < 0 ? line : line.substring(0, i);
+        var value = i < 0 ? '' : line.substring(i + 1);
+        if (value.startsWith(' ')) value = value.substring(1);
+        if (field == 'event') {
+          event = value;
+        } else if (field == 'data') {
+          data.add(value);
+        }
+      },
+      onError: (Object e, StackTrace st) {
+        if (!finished.isCompleted) finished.completeError(e, st);
+      },
+      onDone: () {
+        if (!finished.isCompleted) finished.complete();
+      },
+      cancelOnError: true,
+    );
+    arm();
+    try {
+      await finished.future;
+    } finally {
+      idle?.cancel();
+      unawaited(sub.cancel());
     }
   }
 
