@@ -21,6 +21,9 @@ class _FakeInviteBackend {
   List<Map<String, dynamic>> links = [];
   Map<String, String> owners = {};
   int counter = 0;
+
+  /// 設定後，下一次列表 GET 先取好當下的資料，等 gate 完成才回應（模擬在途的舊回應）
+  Completer<void>? gate;
   http.Response? Function(http.Request r)? override;
 
   Future<http.Response> handle(http.Request r) async {
@@ -29,7 +32,13 @@ class _FakeInviteBackend {
     if (o != null) return o;
     final path = r.url.path;
     if (path == '/social/invite-links') {
-      if (r.method == 'GET') return jsonResp({'links': links});
+      if (r.method == 'GET') {
+        final snapshot = jsonResp({'links': links});
+        final g = gate;
+        gate = null;
+        if (g != null) await g.future;
+        return snapshot;
+      }
       if (links.length >= 20) {
         return jsonResp({'err': 'invite_link_limit'}, 409);
       }
@@ -99,6 +108,18 @@ void main() {
         auth: auth,
         refreshFriends: () async => friendRefreshes++,
       );
+    });
+
+    test('讀取中 create：在途舊回應之後再讀一次，列表含新連結', () async {
+      be.gate = Completer<void>();
+      final gate = be.gate!;
+      final first = s.refresh(); // 舊回應：空列表
+      final created = s.create();
+      await pumpEventQueue();
+      gate.complete();
+      await Future.wait([first, created]);
+      expect(s.links.map((l) => l.token), ['new1']);
+      expect(s.loading, isFalse);
     });
 
     test('create 回 token 並重讀列表，revoke 只移除該條', () async {

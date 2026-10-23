@@ -74,6 +74,8 @@ class InviteLinkService extends ChangeNotifier {
   bool _loading = false;
   String? _error;
   String? _sub;
+  Future<void>? _running;
+  bool _again = false;
 
   List<InviteLink> get links => _links;
   bool get loaded => _loaded;
@@ -82,45 +84,58 @@ class InviteLinkService extends ChangeNotifier {
   /// 最近一次讀取失敗的說明；成功後清掉
   String? get error => _error;
 
-  /// 讀取未使用的連結；失敗時保留上一次的結果並設 [error]
-  Future<void> refresh() async {
-    if (!_auth.isLoggedIn || _loading) return;
-    final sub = _auth.sub;
-    _loading = true;
-    notifyListeners();
-    String? err;
-    List<InviteLink>? links;
-    try {
-      final resp = await _api.send('GET', '/social/invite-links');
-      if (resp.statusCode == 200) {
-        links = [
-          for (final e in _decode(resp)['links'] as List)
-            _link(e as Map<String, dynamic>),
-        ];
-      } else {
-        err = _errorFor(resp.statusCode, _errCode(resp), '讀取失敗').$2;
-      }
-    } on NotSignedInException catch (e) {
-      err = '$e';
-    } on TimeoutException {
-      err = '讀取失敗：連線逾時';
-    } catch (e) {
-      err = '讀取失敗：$e';
+  /// 讀取未使用的連結；失敗時保留上一次的結果並設 [error]。
+  /// 讀取中再次呼叫時，等這次結束後再讀一次（產生、撤銷之後的重讀不會被吞掉）
+  Future<void> refresh() {
+    final running = _running;
+    if (running != null) {
+      _again = true;
+      return running;
     }
-    _loading = false;
-    // 讀取期間登出或換了帳號：結果不屬於目前的域民
-    if (!_auth.isLoggedIn || _auth.sub != sub) {
+    return _running = _load().whenComplete(() => _running = null);
+  }
+
+  Future<void> _load() async {
+    do {
+      _again = false;
+      if (!_auth.isLoggedIn) return;
+      final sub = _auth.sub;
+      _loading = true;
       notifyListeners();
-      return;
-    }
-    if (err == null) {
-      _links = links!;
-      _loaded = true;
-      _error = null;
-    } else {
-      _error = err;
-    }
-    notifyListeners();
+      String? err;
+      List<InviteLink>? links;
+      try {
+        final resp = await _api.send('GET', '/social/invite-links');
+        if (resp.statusCode == 200) {
+          links = [
+            for (final e in _decode(resp)['links'] as List)
+              _link(e as Map<String, dynamic>),
+          ];
+        } else {
+          err = _errorFor(resp.statusCode, _errCode(resp), '讀取失敗').$2;
+        }
+      } on NotSignedInException catch (e) {
+        err = '$e';
+      } on TimeoutException {
+        err = '讀取失敗：連線逾時';
+      } catch (e) {
+        err = '讀取失敗：$e';
+      }
+      _loading = false;
+      // 讀取期間登出或換了帳號：結果不屬於目前的域民
+      if (!_auth.isLoggedIn || _auth.sub != sub) {
+        notifyListeners();
+        continue;
+      }
+      if (err == null) {
+        _links = links!;
+        _loaded = true;
+        _error = null;
+      } else {
+        _error = err;
+      }
+      notifyListeners();
+    } while (_again);
   }
 
   /// `POST /social/invite-links`：產生一條新連結
