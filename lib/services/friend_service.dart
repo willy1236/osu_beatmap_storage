@@ -14,6 +14,7 @@ class FriendPeer {
     required this.username,
     this.picture,
     this.time,
+    this.canBrowse = false,
   });
 
   final String accountId;
@@ -24,6 +25,17 @@ class FriendPeer {
 
   /// 好友列表為成為好友的時間，邀請列表為送出時間
   final DateTime? time;
+
+  /// 對方開放好友瀏覽清單（`/osu/friends/browsable`）；只有好友列表會帶，預設 false
+  final bool canBrowse;
+
+  FriendPeer withCanBrowse(bool v) => FriendPeer(
+    accountId: accountId,
+    username: username,
+    picture: picture,
+    time: time,
+    canBrowse: v,
+  );
 
   String get displayName => username.isEmpty ? '（未知的域民）' : username;
 
@@ -139,20 +151,26 @@ class FriendService extends ChangeNotifier {
       notifyListeners();
       String? err;
       List<FriendPeer>? friends, incoming, outgoing;
+      Set<String> browsable = const {};
       try {
-        final r = await Future.wait([
+        final r = await Future.wait<Object>([
           _api.send('GET', '/social/friends'),
           _api.send('GET', '/social/requests'),
+          _browsableIds(),
         ]);
-        for (final resp in r) {
+        browsable = r[2] as Set<String>;
+        for (final resp in r.take(2).cast<http.Response>()) {
           if (resp.statusCode != 200) {
             err = _errorFor(resp.statusCode, _errCode(resp), '讀取失敗').$2;
           }
         }
         if (err == null) {
-          final f = _decode(r[0]);
-          final q = _decode(r[1]);
-          friends = _peers(f['friends'], 'since');
+          final f = _decode(r[0] as http.Response);
+          final q = _decode(r[1] as http.Response);
+          friends = [
+            for (final p in _peers(f['friends'], 'since'))
+              p.withCanBrowse(browsable.contains(_norm(p.accountId))),
+          ];
           incoming = _peers(q['incoming'], 'created_at');
           outgoing = _peers(q['outgoing'], 'created_at');
         }
@@ -177,6 +195,20 @@ class FriendService extends ChangeNotifier {
       }
       notifyListeners();
     } while (_again);
+  }
+
+  /// `GET /osu/friends/browsable`；失敗時視為沒有人開放（入口不顯示，不拖累好友列表）
+  Future<Set<String>> _browsableIds() async {
+    try {
+      final resp = await _api.send('GET', '/osu/friends/browsable');
+      if (resp.statusCode != 200) return const {};
+      return {
+        for (final id in _decode(resp)['account_ids'] as List)
+          _norm(id as String),
+      };
+    } catch (_) {
+      return const {};
+    }
   }
 
   static Map<String, dynamic> _decode(http.Response resp) =>
