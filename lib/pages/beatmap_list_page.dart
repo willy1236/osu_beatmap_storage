@@ -141,7 +141,7 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
   // ── 選取 Realm 路徑 ────────────────────────────────────────────────────────
 
   Future<void> _pickRealmFile({bool isFirstLaunch = false}) async {
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFiles(
       dialogTitle: '選取 client.realm 檔案',
       type: FileType.custom,
       allowedExtensions: ['realm'],
