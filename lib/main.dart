@@ -33,13 +33,8 @@ Future<void> main(List<String> args) async {
     final context = appNavigatorKey.currentState?.overlay?.context;
     return context == null ? Future.value() : showCloseActionDialog(context);
   };
-  // 系統匣初始化失敗只少了系統匣，不能讓程式起不來
-  try {
-    await TrayService.instance.init();
-    if (autostart) await TrayService.instance.hideToTray();
-  } catch (e) {
-    debugPrint('系統匣初始化失敗：$e');
-  }
+  // 系統匣初始化失敗只少了系統匣，不能讓程式起不來；自動啟動時失敗會改為顯示視窗
+  await TrayService.instance.start(minimized: autostart);
   // 不等待：還原登入狀態失敗或較慢都不影響程式啟動
   AuthService.instance.init();
   // 不等待：先讀入自動上傳開關，帳號選單才不會在讀到清單前顯示成關閉
