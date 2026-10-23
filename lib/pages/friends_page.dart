@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
+import '../services/friend_list_opener.dart';
 import '../services/friend_service.dart';
 import '../widgets/add_friend_dialog.dart';
 import '../services/push_service.dart';
@@ -30,6 +31,13 @@ class FriendsPage extends StatefulWidget {
 class _FriendsPageState extends State<FriendsPage> {
   /// 正在處理的對象（accountId），避免連按
   final Set<String> _busy = {};
+
+  @override
+  void initState() {
+    super.initState();
+    // 開好友頁時重讀，讓「看清單」入口反映對方最新的公開設定
+    if (_auth.isLoggedIn) _service.refresh();
+  }
 
   FriendService get _service => widget.service ?? FriendService.instance;
   AuthService get _auth => widget.auth ?? AuthService.instance;
@@ -152,7 +160,17 @@ class _FriendsPageState extends State<FriendsPage> {
         _header('好友（${s.friends.length}）'),
         if (s.friends.isEmpty) const _Empty('還沒有好友。開啟朋友的分享連結後按「加好友」即可送出邀請。'),
         for (final p in s.friends)
-          _tile(p, actions: [_menu(p, removable: true)]),
+          _tile(
+            p,
+            actions: [
+              if (p.canBrowse)
+                TextButton(
+                  onPressed: () => FriendListOpener.open(context, p),
+                  child: const Text('看清單'),
+                ),
+              _menu(p, removable: true),
+            ],
+          ),
         _header('收到的邀請（${s.incoming.length}）'),
         if (s.incoming.isEmpty) const _Empty('沒有收到的邀請'),
         for (final p in s.incoming)
