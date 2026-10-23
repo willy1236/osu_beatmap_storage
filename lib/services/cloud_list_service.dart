@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import '../models/cloud_entry.dart';
 import 'api_client.dart';
+import 'cloud_presence_service.dart';
 import 'cloud_sync_service.dart' show CloudSyncStatus;
 
 /// 讀取雲端清單的結果。[status] 沿用 [CloudSyncStatus] 的語意
@@ -39,11 +40,16 @@ class CloudDeleteResult {
 /// 讀取與刪除自己的雲端清單。HTTP 一律走 [ApiClient]。
 /// 不丟例外，結果看 [CloudListResult.status]。
 class CloudListService {
-  CloudListService({ApiClient? api}) : _api = api ?? ApiClient.instance;
+  CloudListService({ApiClient? api, void Function()? onChanged})
+    : _api = api ?? ApiClient.instance,
+      _onChanged = onChanged ?? (() => CloudPresenceService.instance.refresh());
 
   static final CloudListService instance = CloudListService();
 
   final ApiClient _api;
+
+  /// 刪除成功後呼叫（預設重讀「已在雲端」標示）；放在 service 裡，刪除途中離開頁面也不會漏
+  final void Function() _onChanged;
 
   /// `GET /osu/beatmaps`：自己的整份清單（依 date_added 新到舊）
   Future<CloudListResult> fetchMine() async {
@@ -96,6 +102,8 @@ class CloudListService {
             : e.message;
         return CloudDeleteResult(e.status, message: msg);
       }
+      // 後端已刪除，不論回應能否解析都要更新標示
+      _onChanged();
       try {
         final json =
             jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;

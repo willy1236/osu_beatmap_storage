@@ -22,7 +22,9 @@ CloudEntry e(int id, String title, {String artist = '', String creator = ''}) =>
 CloudListService make(
   Future<http.Response> Function(http.Request) h, {
   Future<String?> Function()? token,
+  void Function()? onChanged,
 }) => CloudListService(
+  onChanged: onChanged ?? () {},
   api: ApiClient(
     httpClient: MockClient(h),
     tokenProvider: token ?? () async => 'tok',

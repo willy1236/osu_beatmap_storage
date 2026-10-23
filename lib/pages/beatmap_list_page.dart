@@ -222,14 +222,6 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
       for (final s in _beatmapSets)
         if (s.onlineID > 0) s.onlineID,
     };
-    // 雲端清單頁有刪除成功時，回來後重讀「已在雲端」標示
-    var changed = false;
-    Future<CloudDeleteResult> track(Future<CloudDeleteResult> op) async {
-      final r = await op;
-      if (r.ok) changed = true;
-      return r;
-    }
-
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -238,13 +230,11 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
           loader: CloudListService.instance.fetchMine,
           localIds: localIds,
           canDelete: true,
-          onDelete: (ids) => track(CloudListService.instance.deleteSome(ids)),
-          onClear: () => track(CloudListService.instance.clearAll()),
+          onDelete: CloudListService.instance.deleteSome,
+          onClear: CloudListService.instance.clearAll,
         ),
       ),
-    ).then((_) {
-      if (changed) CloudPresenceService.instance.refresh();
-    });
+    );
   }
 
   /// AppBar 下方的雲端上傳狀態：上傳中顯示細進度條，失敗時顯示一行說明

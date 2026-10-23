@@ -8,7 +8,7 @@ import 'cloud_sync_service.dart';
 ///
 /// - 登入後自動讀取，登出或換帳號時清掉
 /// - 上傳（手動、自動、CSV）結束後自動重讀；中途失敗時前面的批次可能已寫入，所以不論結果都重讀
-/// - 其他會改變雲端清單的動作（刪除、複製別人的清單）由呼叫端呼叫 [refresh]
+/// - 刪除與複製別人的清單由 `CloudListService`、`SharedListService.copyToMine` 成功後呼叫 [refresh]
 /// - 盡早建立 [instance]（`main()`），登入還原後就會讀取，不必另外呼叫 [refresh]
 /// - 讀取失敗時保留上一次的結果
 class CloudPresenceService extends ChangeNotifier {

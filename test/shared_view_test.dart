@@ -84,6 +84,7 @@ void main() {
 
   group('SharedCopyButton', () {
     SharedListService svc(int code, List<String> calls) => SharedListService(
+      onCopied: () {},
       api: ApiClient(
         httpClient: MockClient((r) async {
           calls.add('${r.method} ${r.url.path}');

@@ -16,7 +16,9 @@ CloudEntry e(int id, String title) =>
 CloudListService make(
   Future<http.Response> Function(http.Request) h, {
   Future<String?> Function()? token,
+  void Function()? onChanged,
 }) => CloudListService(
+  onChanged: onChanged ?? () {},
   api: ApiClient(
     httpClient: MockClient(h),
     tokenProvider: token ?? () async => 'tok',
@@ -41,6 +43,24 @@ void main() {
       expect(jsonDecode(req.body), {
         'online_ids': [1, 2, 3],
       });
+    });
+
+    test('刪除成功才通知（重讀雲端標示），失敗不通知', () async {
+      var changed = 0;
+      await make(
+        (_) async => http.Response('{"deleted":1}', 200),
+        onChanged: () => changed++,
+      ).deleteSome([1]);
+      await make(
+        (_) async => http.Response('{"deleted":3}', 200),
+        onChanged: () => changed++,
+      ).clearAll();
+      expect(changed, 2);
+      await make(
+        (_) async => http.Response('{}', 500),
+        onChanged: () => changed++,
+      ).deleteSome([1]);
+      expect(changed, 2);
     });
 
     test('clearAll 送 DELETE /osu/beatmaps', () async {
