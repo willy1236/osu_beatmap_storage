@@ -9,6 +9,7 @@ import 'api_client.dart';
 import 'auth_service.dart';
 import 'cloud_presence_service.dart';
 import 'friend_service.dart';
+import 'realtime_service.dart';
 
 /// 一次推送最多幾張、附言最多幾字（與後端契約一致）
 const kPushEntriesMax = 100;
@@ -99,27 +100,35 @@ class CollectResult {
 ///
 /// - 登入後自動讀取，登出或換帳號時清掉（寫法同 [FriendService]）
 /// - 後端的列表直接帶完整圖譜；沒有未讀數端點，[unreadCount] 由列表的 `read` 算出
+/// - 訂閱 [RealtimeService.resyncRequested]（重連成功）時整份重讀，只更新列表與紅點
 /// - 收到 SSE `push` 事件的人（T-09）呼叫 [refresh] 重讀，事件本身不帶圖譜
 class PushService extends ChangeNotifier {
   PushService({
     ApiClient? api,
     AuthService? auth,
     FriendService? friends,
+    RealtimeService? realtime,
     void Function()? onCollected,
   }) : _api = api ?? ApiClient.instance,
        _auth = auth ?? AuthService.instance,
        _friends = friends,
+       _realtime = realtime,
        _onCollected =
            onCollected ?? (() => CloudPresenceService.instance.refresh()) {
     _auth.addListener(_onAuthChanged);
+    _realtime?.resyncRequested.addListener(_onResync);
     _onAuthChanged();
   }
 
-  static final PushService instance = PushService();
+  /// 單例會訂閱 [RealtimeService.instance] 的重連訊號；測試建立的實例預設不訂閱
+  static final PushService instance = PushService(
+    realtime: RealtimeService.instance,
+  );
 
   final ApiClient _api;
   final AuthService _auth;
   final FriendService? _friends;
+  final RealtimeService? _realtime;
   final void Function() _onCollected;
 
   FriendService get _friendService => _friends ?? FriendService.instance;
@@ -414,6 +423,10 @@ class PushService extends ChangeNotifier {
     };
   }
 
+  void _onResync() {
+    if (_auth.isLoggedIn) unawaited(refresh());
+  }
+
   void _onAuthChanged() {
     final sub = _auth.isLoggedIn ? _auth.sub : null;
     if (sub == _sub) return;
@@ -429,6 +442,7 @@ class PushService extends ChangeNotifier {
   @override
   void dispose() {
     _auth.removeListener(_onAuthChanged);
+    _realtime?.resyncRequested.removeListener(_onResync);
     super.dispose();
   }
 }

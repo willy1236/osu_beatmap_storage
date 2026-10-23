@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import 'api_client.dart';
 import 'auth_service.dart';
+import 'realtime_service.dart';
 
 /// 好友或邀請列表上的一位域民
 class FriendPeer {
@@ -89,18 +90,25 @@ class FriendActionResult {
 /// - 送出、接受、拒絕、取消之後一律重讀，不樂觀更新：被對方封鎖時後端仍回「已送出」，
 ///   本機列表以重讀的結果為準
 /// - 讀取失敗時保留上一次的結果並設 [error]
+/// - 訂閱 [RealtimeService.resyncRequested]（重連成功）時整份重讀，不發通知
 class FriendService extends ChangeNotifier {
-  FriendService({ApiClient? api, AuthService? auth})
+  FriendService({ApiClient? api, AuthService? auth, RealtimeService? realtime})
     : _api = api ?? ApiClient.instance,
-      _auth = auth ?? AuthService.instance {
+      _auth = auth ?? AuthService.instance,
+      _realtime = realtime {
     _auth.addListener(_onAuthChanged);
+    _realtime?.resyncRequested.addListener(_onResync);
     _onAuthChanged();
   }
 
-  static final FriendService instance = FriendService();
+  /// 單例會訂閱 [RealtimeService.instance] 的重連訊號；測試建立的實例預設不訂閱
+  static final FriendService instance = FriendService(
+    realtime: RealtimeService.instance,
+  );
 
   final ApiClient _api;
   final AuthService _auth;
+  final RealtimeService? _realtime;
 
   List<FriendPeer> _friends = const [];
   List<FriendPeer> _incoming = const [];
@@ -446,6 +454,10 @@ class FriendService extends ChangeNotifier {
     );
   }
 
+  void _onResync() {
+    if (_auth.isLoggedIn) unawaited(refresh());
+  }
+
   void _onAuthChanged() {
     final sub = _auth.isLoggedIn ? _auth.sub : null;
     if (sub == _sub) return;
@@ -463,6 +475,7 @@ class FriendService extends ChangeNotifier {
   @override
   void dispose() {
     _auth.removeListener(_onAuthChanged);
+    _realtime?.resyncRequested.removeListener(_onResync);
     super.dispose();
   }
 }

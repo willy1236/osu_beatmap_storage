@@ -10,7 +10,8 @@ import 'lazer_detector.dart';
 import 'realtime_service.dart';
 
 /// 上線狀態：偵測 osu!lazer 並回報（`PUT /social/presence`）、公開開關（`/social/settings`），
-/// 並把好友的 `presence` 事件套用到 [FriendService]。
+/// 並把好友的 `presence` 事件套用到 [FriendService]。重連後的好友列表重讀由
+/// [FriendService] 自己訂閱 `resyncRequested`，這裡只管自己的回報狀態。
 ///
 /// - 登入後每 [interval] 偵測一次，結果與上次回報的不同才回報
 /// - 後端要求先連上 SSE 才能回報 playing（沒有連線時視同 idle），斷線立刻視為 idle、沒有寬限，
@@ -35,7 +36,6 @@ class PresenceService extends ChangeNotifier {
        _interval = interval ?? const Duration(seconds: 5) {
     _auth.addListener(_onAuthChanged);
     _realtime.connected.addListener(_onConnected);
-    _realtime.resyncRequested.addListener(_onResync);
     _cancelPresence = _realtime.on('presence', _onPresence);
     _onAuthChanged();
   }
@@ -97,8 +97,6 @@ class PresenceService extends ChangeNotifier {
     _reported = false;
     unawaited(tick());
   }
-
-  void _onResync() => unawaited(_friends.refresh());
 
   void _onPresence(Map<String, dynamic> data) {
     final id = data['account_id'];
@@ -184,7 +182,6 @@ class PresenceService extends ChangeNotifier {
     _timer?.cancel();
     _auth.removeListener(_onAuthChanged);
     _realtime.connected.removeListener(_onConnected);
-    _realtime.resyncRequested.removeListener(_onResync);
     _cancelPresence();
     super.dispose();
   }

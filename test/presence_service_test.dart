@@ -78,7 +78,7 @@ void main() {
       baseUrl: 'https://api.test',
       backoff: (_) => const Duration(milliseconds: 5),
     );
-    final f = FriendService(api: be.api, auth: auth);
+    final f = FriendService(api: be.api, auth: auth, realtime: rt);
     final p = PresenceService(
       api: be.api,
       auth: auth,
