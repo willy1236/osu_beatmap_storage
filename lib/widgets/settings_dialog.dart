@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/autostart_service.dart';
 import '../services/prefs_service.dart';
 import '../services/tray_service.dart';
+import 'browse_setting.dart';
 import 'presence_setting.dart';
 
 /// 設定對話框的一個項目。新增設定（例如 T-06 的「公開我的清單」、T-10 的「顯示遊玩狀態」）：
@@ -18,6 +19,7 @@ class SettingsEntry {
 final List<SettingsEntry> defaultSettingsEntries = [
   SettingsEntry(title: '關閉視窗時', builder: (_) => const CloseActionSetting()),
   SettingsEntry(title: '開機', builder: (_) => const AutostartSetting()),
+  SettingsEntry(title: '公開我的清單', builder: (_) => const BrowseSetting()),
   SettingsEntry(title: '上線狀態', builder: (_) => const PresenceSetting()),
   // —— 新項目插入處 ——
 ];

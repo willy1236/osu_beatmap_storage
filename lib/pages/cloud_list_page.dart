@@ -267,6 +267,11 @@ class _CloudListPageState extends State<CloudListPage> {
               )
             : null,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: '重新整理',
+            onPressed: _loading ? null : _load,
+          ),
           if (ok) ...[
             FilterChip(
               label: const Text('只看本機缺'),

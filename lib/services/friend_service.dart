@@ -15,6 +15,7 @@ class FriendPeer {
     this.picture,
     this.time,
     this.playing = false,
+    this.canBrowse = false,
   });
 
   final String accountId;
@@ -28,6 +29,27 @@ class FriendPeer {
 
   /// 正在遊玩 osu!lazer；只有好友列表會有，對方關掉上線狀態時一律 false
   final bool playing;
+
+  /// 對方開放好友瀏覽清單（`/osu/friends/browsable`）；只有好友列表會帶，預設 false
+  final bool canBrowse;
+
+  FriendPeer withCanBrowse(bool v) => FriendPeer(
+    accountId: accountId,
+    username: username,
+    picture: picture,
+    time: time,
+    playing: playing,
+    canBrowse: v,
+  );
+
+  FriendPeer withPlaying(bool v) => FriendPeer(
+    accountId: accountId,
+    username: username,
+    picture: picture,
+    time: time,
+    playing: v,
+    canBrowse: canBrowse,
+  );
 
   String get displayName => username.isEmpty ? '（未知的域民）' : username;
 
@@ -130,15 +152,7 @@ class FriendService extends ChangeNotifier {
     final id = _norm(accountId);
     final i = _friends.indexWhere((p) => _norm(p.accountId) == id);
     if (i < 0 || _friends[i].playing == playing) return;
-    final old = _friends[i];
-    _friends = [..._friends]
-      ..[i] = FriendPeer(
-        accountId: old.accountId,
-        username: old.username,
-        picture: old.picture,
-        time: old.time,
-        playing: playing,
-      );
+    _friends = [..._friends]..[i] = _friends[i].withPlaying(playing);
     notifyListeners();
   }
 
@@ -161,20 +175,26 @@ class FriendService extends ChangeNotifier {
       notifyListeners();
       String? err;
       List<FriendPeer>? friends, incoming, outgoing;
+      Set<String> browsable = const {};
       try {
-        final r = await Future.wait([
+        final r = await Future.wait<Object>([
           _api.send('GET', '/social/friends'),
           _api.send('GET', '/social/requests'),
+          _browsableIds(),
         ]);
-        for (final resp in r) {
+        browsable = r[2] as Set<String>;
+        for (final resp in r.take(2).cast<http.Response>()) {
           if (resp.statusCode != 200) {
             err = _errorFor(resp.statusCode, _errCode(resp), '讀取失敗').$2;
           }
         }
         if (err == null) {
-          final f = _decode(r[0]);
-          final q = _decode(r[1]);
-          friends = _peers(f['friends'], 'since');
+          final f = _decode(r[0] as http.Response);
+          final q = _decode(r[1] as http.Response);
+          friends = [
+            for (final p in _peers(f['friends'], 'since'))
+              p.withCanBrowse(browsable.contains(_norm(p.accountId))),
+          ];
           incoming = _peers(q['incoming'], 'created_at');
           outgoing = _peers(q['outgoing'], 'created_at');
         }
@@ -199,6 +219,20 @@ class FriendService extends ChangeNotifier {
       }
       notifyListeners();
     } while (_again);
+  }
+
+  /// `GET /osu/friends/browsable`；失敗時視為沒有人開放（入口不顯示，不拖累好友列表）
+  Future<Set<String>> _browsableIds() async {
+    try {
+      final resp = await _api.send('GET', '/osu/friends/browsable');
+      if (resp.statusCode != 200) return const {};
+      return {
+        for (final id in _decode(resp)['account_ids'] as List)
+          _norm(id as String),
+      };
+    } catch (_) {
+      return const {};
+    }
   }
 
   static Map<String, dynamic> _decode(http.Response resp) =>
@@ -239,6 +273,17 @@ class FriendService extends ChangeNotifier {
     'DELETE',
     '/social/requests/${Uri.encodeComponent(toId)}',
     notFound: '這筆邀請已不存在',
+  );
+
+  /// `POST /social/requests`：對指定域民送好友邀請（對方已邀請過我時直接成為好友）
+  Future<FriendActionResult> sendToAccount(String accountId) => _act(
+    'POST',
+    '/social/requests',
+    jsonBody: {'account_id': accountId},
+    notFound: '找不到這位域民',
+    parse: (body) => body['status'] == 'friends'
+        ? FriendActionStatus.friends
+        : FriendActionStatus.sent,
   );
 
   /// `DELETE /social/friends/{account_id}`
@@ -308,12 +353,13 @@ class FriendService extends ChangeNotifier {
   Future<FriendActionResult> _act(
     String method,
     String path, {
+    Object? jsonBody,
     required String notFound,
     FriendActionStatus Function(Map<String, dynamic> body)? parse,
   }) async {
     FriendActionResult result;
     try {
-      final resp = await _api.send(method, path);
+      final resp = await _api.send(method, path, jsonBody: jsonBody);
       if (resp.statusCode >= 200 && resp.statusCode < 300) {
         var status = FriendActionStatus.done;
         if (parse != null) {

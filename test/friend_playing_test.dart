@@ -41,4 +41,36 @@ void main() {
     expect(s.friends.single.playing, isFalse);
     expect(n, 2);
   });
+
+  test(
+    'playing 與 canBrowse 互不覆蓋：setPlaying 保留 canBrowse，withCanBrowse 保留 playing',
+    () {
+      const p = FriendPeer(
+        accountId: bId,
+        username: 'b',
+        playing: true,
+        canBrowse: true,
+      );
+      final a = p.withCanBrowse(false);
+      expect(a.playing, isTrue);
+      expect(a.canBrowse, isFalse);
+      final b = p.withPlaying(false);
+      expect(b.playing, isFalse);
+      expect(b.canBrowse, isTrue);
+    },
+  );
+
+  test('setPlaying 之後好友的 canBrowse 不變', () async {
+    be.friends = [peerJson(bId, 'b', timeKey: 'since')];
+    be.override = (r) => r.url.path == '/osu/friends/browsable'
+        ? jsonResp({
+            'account_ids': [bId],
+          })
+        : null;
+    final s = await make();
+    expect(s.friends.single.canBrowse, isTrue);
+    s.setPlaying(bId, true);
+    expect(s.friends.single.playing, isTrue);
+    expect(s.friends.single.canBrowse, isTrue);
+  });
 }

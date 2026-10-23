@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
+import '../services/friend_list_opener.dart';
 import '../services/friend_service.dart';
+import '../widgets/add_friend_dialog.dart';
 import '../services/push_service.dart';
 import '../widgets/friend_search.dart';
 import '../widgets/peer_action_menu.dart';
@@ -33,6 +35,13 @@ class _FriendsPageState extends State<FriendsPage> {
 
   String _query = '';
 
+  @override
+  void initState() {
+    super.initState();
+    // 開好友頁時重讀，讓「看清單」入口反映對方最新的公開設定
+    if (_auth.isLoggedIn) _service.refresh();
+  }
+
   FriendService get _service => widget.service ?? FriendService.instance;
   AuthService get _auth => widget.auth ?? AuthService.instance;
   PushService get _push => widget.push ?? PushService.instance;
@@ -63,6 +72,12 @@ class _FriendsPageState extends State<FriendsPage> {
           appBar: AppBar(
             title: const Text('好友'),
             actions: [
+              IconButton(
+                icon: const Icon(Icons.person_add_alt_1),
+                tooltip: '加好友',
+                onPressed: () =>
+                    showAddFriendDialog(context, service: _service),
+              ),
               IconButton(
                 icon: const Icon(Icons.inbox),
                 tooltip: '收件匣',
@@ -150,7 +165,17 @@ class _FriendsPageState extends State<FriendsPage> {
         if (s.friends.isNotEmpty)
           FriendSearchField(onChanged: (v) => setState(() => _query = v)),
         for (final p in sortAndFilterFriends(s.friends, _query))
-          _tile(p, actions: [_menu(p, removable: true)]),
+          _tile(
+            p,
+            actions: [
+              if (p.canBrowse)
+                TextButton(
+                  onPressed: () => FriendListOpener.open(context, p),
+                  child: const Text('看清單'),
+                ),
+              _menu(p, removable: true),
+            ],
+          ),
         _header('收到的邀請（${s.incoming.length}）'),
         if (s.incoming.isEmpty) const _Empty('沒有收到的邀請'),
         for (final p in s.incoming)
