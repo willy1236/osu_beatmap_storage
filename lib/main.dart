@@ -9,6 +9,7 @@ import 'services/autostart_service.dart';
 import 'services/auto_upload_service.dart';
 import 'services/cloud_presence_service.dart';
 import 'services/friend_service.dart';
+import 'services/notification_service.dart';
 import 'services/protocol_registrar.dart';
 import 'services/realtime_service.dart';
 import 'services/presence_service.dart';
@@ -46,6 +47,8 @@ Future<void> main(List<String> args) async {
   RealtimeService.instance;
   // 盡早建立：登入後偵測 osu!lazer 並回報上線狀態，也把好友的 presence 事件套用到好友列表
   PresenceService.instance;
+  // 盡早建立：登入後預載收件匣（紅點），並把好友邀請與推送的即時事件轉成 Windows 通知
+  NotificationService.instance;
   // 盡早開始接收連結（冷啟動的第一條連結會先暫存到開始監聽）
   AppLinkService.instance.start();
   // 不等待：註冊 osu-storage:// 指向目前的執行檔，失敗不影響程式
