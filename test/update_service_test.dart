@@ -109,6 +109,30 @@ void _applyScriptTests() {
     });
   });
 
+  test('更新腳本必須是純 ASCII', () {
+    final bad = UpdateService.applyScriptSource.codeUnits.where((c) => c > 127);
+    expect(bad, isEmpty);
+  });
+
+  group('describeError', () {
+    test('拿掉 Exception 前綴', () {
+      expect(UpdateService.describeError(Exception('boom')), '更新失敗：boom');
+      expect(
+        UpdateService.describeError(const UpdateException('找不到')),
+        '更新失敗：找不到',
+      );
+    });
+
+    test('標記逾時的訊息提示手動下載', () {
+      expect(
+        UpdateService.describeError(
+          const UpdateException(UpdateService.launchFailedMessage),
+        ),
+        '更新失敗：更新程式沒有啟動，請改為手動下載 zip 更新',
+      );
+    });
+  });
+
   group('launchApplyScript', () {
     late Directory dir;
     setUp(() => dir = Directory.systemTemp.createTempSync('upd_test'));
@@ -185,12 +209,12 @@ void _applyScriptTests() {
         ).copySync('${source.path}/run.exe');
       }
       File(
-        '$base/apply.ps1',
+        '${root.path}/apply.ps1',
       ).writeAsStringSync(UpdateService.applyScriptSource);
       return (
         source: source,
         target: target,
-        started: File('$base/started.flag'),
+        started: File('${root.path}/started.flag'),
       );
     }
 
@@ -254,10 +278,10 @@ void _applyScriptTests() {
       expect(File('${c.target.path}/old.dll').existsSync(), isTrue);
       expect(File('${c.target.path}/new.dll').existsSync(), isFalse);
       expect(File('${c.target.path}/ran.txt').existsSync(), isFalse);
-      expect(c.source.existsSync(), isTrue);
+      expect(c.source.existsSync(), isFalse); // 放棄更新也會清掉暫存
     });
 
-    test('備份目錄無法建立：不換檔，仍重啟', () async {
+    test('殘留備份無法清除：改用新備份目錄，仍完成更新並重啟', () async {
       final c = await setup('nobackup');
       final backup = Directory('${c.target.path}/.update_backup')..createSync();
       final locked = File('${backup.path}/x.bin')..writeAsStringSync('x');
@@ -267,9 +291,8 @@ void _applyScriptTests() {
       final ran = File('${c.target.path}/ran.txt');
       await until(ran.existsSync);
       expect(ran.existsSync(), isTrue);
-      expect(File('${c.target.path}/old.dll').readAsStringSync(), 'old');
-      expect(File('${c.target.path}/new.dll').existsSync(), isFalse);
-      expect(File('${c.target.path}/update_error.log').existsSync(), isTrue);
+      expect(File('${c.target.path}/new.dll').existsSync(), isTrue);
+      expect(File('${c.target.path}/old.dll').existsSync(), isFalse);
     });
 
     test('換檔中途失敗：回滾已搬走的檔案，仍重啟', () async {
@@ -289,17 +312,86 @@ void _applyScriptTests() {
       expect(File('${c.target.path}/update_error.log').existsSync(), isTrue);
     });
 
-    test('複製新檔失敗：清掉新檔並回滾舊檔，仍重啟', () async {
+    test('複製新檔失敗：清掉新檔、還原所有同名舊項目（含未備份清單內的檔案與資料夾）', () async {
       final c = await setup('copyfail');
-      File('${c.source.path}/zz.txt').writeAsStringSync('new');
-      // 目標的 zz.txt 其實是資料夾，複製檔案蓋上去會失敗
-      Directory('${c.target.path}/zz.txt').createSync();
+      File(
+        '${c.source.path}/native_assets.json',
+      ).writeAsStringSync('new-manifest');
+      File(
+        '${c.target.path}/native_assets.json',
+      ).writeAsStringSync('old-manifest');
+      Directory('${c.source.path}/userdir').createSync();
+      File('${c.source.path}/userdir/n.txt').writeAsStringSync('n');
+      Directory('${c.target.path}/userdir').createSync();
+      File('${c.target.path}/userdir/keep.txt').writeAsStringSync('userdata');
+      // 排在最後的來源檔被獨佔鎖住，複製到它時失敗
+      final lockPath = '${c.source.path}/zzlock.bin';
+      File(lockPath).writeAsStringSync('x');
+      final holder = await Process.start('powershell', [
+        '-NoProfile',
+        '-Command',
+        "\$f=[IO.File]::Open('$lockPath','Open','Read','None'); 'locked'; Start-Sleep 60",
+      ]);
+      addTearDown(holder.kill);
+      await holder.stdout
+          .transform(utf8.decoder)
+          .firstWhere((t) => t.contains('locked'));
       expect(await run(c, appPid: await deadPid()), isTrue);
       final ran = File('${c.target.path}/ran.txt');
       await until(ran.existsSync);
       expect(ran.existsSync(), isTrue);
-      expect(File('${c.target.path}/old.dll').readAsStringSync(), 'old');
-      expect(File('${c.target.path}/new.dll').existsSync(), isFalse);
+      final t = c.target.path;
+      expect(File('$t/old.dll').readAsStringSync(), 'old');
+      expect(File('$t/native_assets.json').readAsStringSync(), 'old-manifest');
+      expect(File('$t/userdir/keep.txt').readAsStringSync(), 'userdata');
+      expect(File('$t/userdir/n.txt').existsSync(), isFalse);
+      expect(File('$t/new.dll').existsSync(), isFalse);
+      expect(Directory('$t/.update_backup').existsSync(), isFalse);
+      expect(File('$t/update_error.log').existsSync(), isTrue);
+    });
+
+    test('換檔成功但備份清理失敗：更新保持成功並重啟', () async {
+      final c = await setup('cleanfail');
+      // 前次殘留且已標記完成的備份，裡面有被鎖住的檔：清理會失敗，但不能影響這次更新
+      final leftover = Directory('${c.target.path}/.update_backup')
+        ..createSync();
+      File('${c.target.path}/.update_backup.success').writeAsStringSync('ok');
+      final raf = File('${leftover.path}/z.dll').openSync(mode: FileMode.write);
+      addTearDown(raf.closeSync);
+      expect(await run(c, appPid: await deadPid()), isTrue);
+      final ran = File('${c.target.path}/ran.txt');
+      await until(ran.existsSync);
+      expect(ran.existsSync(), isTrue);
+      expect(File('${c.target.path}/new.dll').existsSync(), isTrue);
+      // 殘留備份裡的舊檔不可被當成回滾資料還原回來
+      expect(File('${c.target.path}/z.dll').existsSync(), isFalse);
+      expect(File('${c.target.path}/old.dll').existsSync(), isFalse);
+    });
+
+    test('前次中斷的備份（無完成標記）會先還原', () async {
+      final c = await setup('leftover');
+      final leftover = Directory('${c.target.path}/.update_backup')
+        ..createSync();
+      File('${leftover.path}/keep.txt').writeAsStringSync('from-backup');
+      expect(await run(c, appPid: await deadPid()), isTrue);
+      final ran = File('${c.target.path}/ran.txt');
+      await until(ran.existsSync);
+      expect(
+        File('${c.target.path}/keep.txt').readAsStringSync(),
+        'from-backup',
+      );
+      expect(File('${c.target.path}/new.dll').existsSync(), isTrue);
+    });
+
+    test('Target 路徑含 [ ] 也能備份、更新與重啟', () async {
+      final c = await setup('app [x]');
+      expect(await run(c, appPid: await deadPid()), isTrue);
+      final ran = File('${c.target.path}/ran.txt');
+      await until(ran.existsSync);
+      expect(ran.existsSync(), isTrue);
+      expect(File('${c.target.path}/new.dll').existsSync(), isTrue);
+      expect(File('${c.target.path}/old.dll').existsSync(), isFalse);
+      expect(File('${c.target.path}/update_error.log').existsSync(), isFalse);
     });
   }, skip: !Platform.isWindows);
 }

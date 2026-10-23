@@ -21,6 +21,15 @@ class UpdateInfo {
   final String zipUrl;
 }
 
+/// 更新流程中可直接顯示給使用者的錯誤
+class UpdateException implements Exception {
+  const UpdateException(this.message);
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 enum UpdateStatus { idle, available, downloading, installing, failed }
 
 /// 檢查 GitHub Releases 有沒有新版，並原地更新程式。
@@ -128,10 +137,15 @@ class UpdateService extends ChangeNotifier {
       final extractDir = p.join(work.path, 'files');
       await compute(_extract, (zip: zipPath, out: extractDir));
       final source = _findAppRoot(Directory(extractDir));
-      if (source == null) throw Exception('下載的檔案裡找不到 $_exeName');
+      if (source == null) throw UpdateException('下載的檔案裡找不到 $_exeName');
 
       final script = File(p.join(work.path, 'apply_update.ps1'));
-      await script.writeAsString(_applyScript);
+      await script.writeAsBytes([
+        0xEF,
+        0xBB,
+        0xBF,
+        ...utf8.encode(_applyScript),
+      ]);
       final started = File(p.join(work.path, 'started.flag'));
       final ok = await launchApplyScript(
         start: () => Process.start(
@@ -150,15 +164,22 @@ class UpdateService extends ChangeNotifier {
         started: started,
       );
       if (!ok) {
-        _error = '更新失敗：更新程式沒有啟動，請改為手動下載 zip 更新';
-        _setStatus(UpdateStatus.failed, null);
-        return;
+        throw const UpdateException(launchFailedMessage);
       }
       exit(0);
     } catch (e) {
-      _error = '更新失敗：$e';
+      _error = describeError(e);
       _setStatus(UpdateStatus.failed, null);
     }
+  }
+
+  static const launchFailedMessage = '更新程式沒有啟動，請改為手動下載 zip 更新';
+
+  /// 轉成給使用者看的失敗訊息，拿掉 `Exception: ` 之類的前綴
+  @visibleForTesting
+  static String describeError(Object e) {
+    final text = e.toString().replaceFirst(RegExp(r'^\w*Exception: '), '');
+    return '更新失敗：$text';
   }
 
   @visibleForTesting
@@ -274,65 +295,154 @@ void _extract(({String zip, String out}) args) {
   }
 }
 
-/// 等程式結束 → 舊程式檔移到 .update_backup → 複製新檔 → 重新啟動。
-/// 舊程式逾時仍未結束就放棄更新（不換檔、不重啟）。換檔失敗會盡力回滾，
-/// 錯誤寫進 update_error.log，且無論如何都會重新啟動程式。只動程式檔，不碰資料。
+/// 更新腳本（內容必須維持純 ASCII，避免 Windows PowerShell 5.1 以 ANSI 碼頁誤解碼）。
+///
+/// 流程：等舊程式結束（逾時就放棄）→ 把 Target 中與新版同名的項目移到 .update_backup
+/// → 複製新檔 → 重新啟動。任何失敗都盡力回滾並一定重啟；清理備份失敗只記 log。
+/// 只動程式檔，不碰使用者資料。錯誤寫進 update_error.log。
 const _applyScript = r'''
 param([int]$AppPid, [string]$Source, [string]$Target, [string]$Exe, [string]$Started, [int]$WaitSeconds = 60)
 $ErrorActionPreference = 'Stop'
 Set-Content -LiteralPath $Started -Value 'started'
 $log = Join-Path $Target 'update_error.log'
+Remove-Item -LiteralPath $log -Force -ErrorAction SilentlyContinue
 
-Wait-Process -Id $AppPid -Timeout $WaitSeconds -ErrorAction SilentlyContinue
-if (Get-Process -Id $AppPid -ErrorAction SilentlyContinue) {
-  try { "舊程式 (pid $AppPid) 在 $WaitSeconds 秒內沒有結束，已放棄更新" | Out-File -FilePath $log -Encoding utf8 } catch {}
-  exit 1
+function Write-Log([string]$Message) {
+  try { Add-Content -LiteralPath $log -Value $Message -Encoding UTF8 } catch {}
+}
+
+# Run an action up to 5 times (200 ms apart); log and return $false if it keeps failing.
+function Invoke-Retry([scriptblock]$Action, [string]$What) {
+  $err = $null
+  for ($i = 0; $i -lt 5; $i++) {
+    try { & $Action; return $true } catch { $err = $_; Start-Sleep -Milliseconds 200 }
+  }
+  Write-Log "FAILED: $What : $err"
+  return $false
+}
+
+# .NET based helpers: no wildcard globbing, so paths containing [ ] are safe.
+function Move-Entry([string]$From, [string]$To) {
+  if ([IO.Directory]::Exists($From)) { [IO.Directory]::Move($From, $To) } else { [IO.File]::Move($From, $To) }
+}
+function Copy-Entry([string]$From, [string]$To) {
+  if ([IO.Directory]::Exists($From)) {
+    [void][IO.Directory]::CreateDirectory($To)
+    foreach ($child in [IO.Directory]::GetFileSystemEntries($From)) {
+      Copy-Entry $child (Join-Path $To ([IO.Path]::GetFileName($child)))
+    }
+  } else {
+    [IO.File]::Copy($From, $To, $true)
+  }
+}
+
+# Wait for the old app. Hold the Process object so a reused PID is never mistaken for it.
+$proc = $null
+try { $proc = Get-Process -Id $AppPid -ErrorAction Stop } catch { $proc = $null }
+if ($proc) {
+  $exited = $false
+  try {
+    $exited = $proc.WaitForExit($WaitSeconds * 1000)
+  } catch {
+    Wait-Process -Id $AppPid -Timeout $WaitSeconds -ErrorAction SilentlyContinue
+    $exited = -not (Get-Process -Id $AppPid -ErrorAction SilentlyContinue)
+  }
+  if (-not $exited) {
+    Write-Log "Old app (pid $AppPid) did not exit within $WaitSeconds s; update aborted."
+    Remove-Item -LiteralPath $Source -Recurse -Force -ErrorAction SilentlyContinue
+    exit 1
+  }
 }
 Start-Sleep -Milliseconds 500
 
+# A backup left by an earlier run: if the marker file exists (kept outside the backup so a
+# half-finished delete cannot remove it) the update had succeeded and only the cleanup
+# failed, so just delete it; otherwise a rollback was interrupted, so restore it first.
 $backup = Join-Path $Target '.update_backup'
-$moved = $false
-$copying = $false
-try {
-  if (Test-Path $backup) { Remove-Item $backup -Recurse -Force }
-  New-Item -ItemType Directory -Path $backup | Out-Null
+$marker = Join-Path $Target '.update_backup.success'
+if (Test-Path -LiteralPath $backup) {
+  if (-not (Test-Path -LiteralPath $marker)) {
+    foreach ($item in @(Get-ChildItem -LiteralPath $backup -Force)) {
+      $dest = Join-Path $Target $item.Name
+      if (Test-Path -LiteralPath $dest) {
+        [void](Invoke-Retry { Remove-Item -LiteralPath $dest -Recurse -Force } "remove $dest before restoring")
+      }
+      [void](Invoke-Retry { Move-Entry $item.FullName $dest } "restore leftover $($item.Name)")
+    }
+  }
+  Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue
+  if (Test-Path -LiteralPath $backup) {
+    $backup = Join-Path $Target ('.update_backup_' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    $marker = $backup + '.success'
+  }
+}
+Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue
 
-  $old = @(Get-ChildItem -Path $Target -File -Filter '*.dll')
-  foreach ($name in @($Exe, 'data')) {
-    $path = Join-Path $Target $name
-    if (Test-Path $path) { $old += Get-Item $path }
+$moved = New-Object System.Collections.ArrayList
+$copying = $false
+$ok = $false
+try {
+  [void][IO.Directory]::CreateDirectory($backup)
+
+  # Back up everything the update will touch: every entry of Target that has the same name
+  # as an entry of Source, plus stale *.dll, the exe and data.
+  $names = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+  foreach ($e in [IO.Directory]::GetFileSystemEntries($Source)) { [void]$names.Add([IO.Path]::GetFileName($e)) }
+  foreach ($e in [IO.Directory]::GetFiles($Target, '*.dll')) { [void]$names.Add([IO.Path]::GetFileName($e)) }
+  [void]$names.Add($Exe)
+  [void]$names.Add('data')
+  foreach ($name in $names) {
+    if ($name -like '.update_backup*' -or $name -eq 'update_error.log') { continue }
+    if (Test-Path -LiteralPath (Join-Path $Target $name)) {
+      Move-Entry (Join-Path $Target $name) (Join-Path $backup $name)
+      [void]$moved.Add($name)
+    }
   }
 
-  $moved = $true
-  foreach ($item in $old) { Move-Item -Path $item.FullName -Destination $backup }
   $copying = $true
-  Get-ChildItem -Path $Source | Copy-Item -Destination $Target -Recurse -Force
-  Remove-Item $backup -Recurse -Force
+  foreach ($e in [IO.Directory]::GetFileSystemEntries($Source)) {
+    Copy-Entry $e (Join-Path $Target ([IO.Path]::GetFileName($e)))
+  }
+  [IO.File]::WriteAllText($marker, 'ok')
+  $ok = $true
 } catch {
-  try { $_ | Out-File -FilePath $log -Encoding utf8 } catch {}
-  if ($moved) {
-    # 盡力回滾：每一步失敗都繼續做下一步
-    $ErrorActionPreference = 'Continue'
+  Write-Log "Update failed, rolling back: $_"
+  try {
     if ($copying) {
-      # 只有已開始複製才需要清掉新檔；否則同名檔就是還沒搬走的舊檔，不能刪
-      foreach ($item in @(Get-ChildItem -Path $Source)) {
-        $path = Join-Path $Target $item.Name
-        if (Test-Path $path) { Remove-Item $path -Recurse -Force -ErrorAction SilentlyContinue }
+      foreach ($e in [IO.Directory]::GetFileSystemEntries($Source)) {
+        $dest = Join-Path $Target ([IO.Path]::GetFileName($e))
+        if (Test-Path -LiteralPath $dest) {
+          [void](Invoke-Retry { Remove-Item -LiteralPath $dest -Recurse -Force } "remove new $dest")
+        }
       }
     }
-    foreach ($item in @(Get-ChildItem -Path $backup)) {
-      Move-Item -Path $item.FullName -Destination $Target -Force -ErrorAction Continue
+    foreach ($name in $moved) {
+      [void](Invoke-Retry { Move-Entry (Join-Path $backup $name) (Join-Path $Target $name) } "restore $name")
     }
-    if (-not @(Get-ChildItem -Path $backup -ErrorAction SilentlyContinue)) {
-      Remove-Item $backup -Recurse -Force -ErrorAction SilentlyContinue
+    if (-not @(Get-ChildItem -LiteralPath $backup -Force -ErrorAction SilentlyContinue)) {
+      Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue
     }
+  } catch {
+    Write-Log "Rollback error: $_"
+  }
+}
+
+# Backup cleanup after a successful update must never undo it; failures are only logged.
+if ($ok) {
+  if (Invoke-Retry { Remove-Item -LiteralPath $backup -Recurse -Force } 'clean up backup') {
+    Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue
   }
 }
 
 try {
-  Start-Process -FilePath (Join-Path $Target $Exe) -WorkingDirectory $Target
+  # Not Start-Process: its -FilePath is globbed, which breaks paths containing [ ].
+  $psi = New-Object System.Diagnostics.ProcessStartInfo
+  $psi.FileName = Join-Path $Target $Exe
+  $psi.WorkingDirectory = $Target
+  $psi.UseShellExecute = $true
+  [void][System.Diagnostics.Process]::Start($psi)
 } catch {
-  try { $_ | Out-File -FilePath $log -Append -Encoding utf8 } catch {}
+  Write-Log "Restart failed: $_"
 }
-Remove-Item $Source -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $Source -Recurse -Force -ErrorAction SilentlyContinue
 ''';
