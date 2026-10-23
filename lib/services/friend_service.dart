@@ -256,10 +256,7 @@ class FriendService extends ChangeNotifier {
         message: '操作失敗：連線逾時',
       );
     } catch (e) {
-      return FriendActionResult(
-        FriendActionStatus.failed,
-        message: '操作失敗：$e',
-      );
+      return FriendActionResult(FriendActionStatus.failed, message: '操作失敗：$e');
     }
     // 成功與失敗都重讀：失敗（例如邀請已被取消）時本機列表可能已過期
     await refresh();
