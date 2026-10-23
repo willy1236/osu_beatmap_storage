@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/auto_upload_service.dart';
+import '../services/notification_service.dart';
 import '../widgets/danser_setup_gate.dart';
+import '../widgets/count_badge.dart';
 import '../widgets/open_share_link_dialog.dart';
 import '../widgets/settings_dialog.dart';
 import '../widgets/share_dialog.dart';
@@ -30,6 +32,14 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final notifications = NotificationService.instance;
+    return ListenableBuilder(
+      listenable: notifications,
+      builder: (context, _) => _buildScaffold(notifications.badgeCount),
+    );
+  }
+
+  Widget _buildScaffold(int badge) {
     return Scaffold(
       body: Row(
         children: [
@@ -53,21 +63,27 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
             ),
-            destinations: const [
-              NavigationRailDestination(
+            destinations: [
+              const NavigationRailDestination(
                 icon: Icon(Icons.library_music_outlined),
                 selectedIcon: Icon(Icons.library_music),
                 label: Text('圖譜查看'),
               ),
-              NavigationRailDestination(
+              const NavigationRailDestination(
                 icon: Icon(Icons.play_circle_outline),
                 selectedIcon: Icon(Icons.play_circle),
                 label: Text('回放匯出'),
               ),
               NavigationRailDestination(
-                icon: Icon(Icons.people_outline),
-                selectedIcon: Icon(Icons.people),
-                label: Text('好友'),
+                icon: CountBadge(
+                  count: badge,
+                  child: const Icon(Icons.people_outline),
+                ),
+                selectedIcon: CountBadge(
+                  count: badge,
+                  child: const Icon(Icons.people),
+                ),
+                label: const Text('好友'),
               ),
             ],
           ),

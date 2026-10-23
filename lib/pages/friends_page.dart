@@ -5,6 +5,7 @@ import '../services/friend_list_opener.dart';
 import '../services/friend_service.dart';
 import '../widgets/invite_links_section.dart';
 import '../widgets/add_friend_dialog.dart';
+import '../widgets/count_badge.dart';
 import '../services/push_service.dart';
 import '../widgets/friend_search.dart';
 import '../widgets/peer_action_menu.dart';
@@ -66,7 +67,7 @@ class _FriendsPageState extends State<FriendsPage> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([_auth, _service]),
+      listenable: Listenable.merge([_auth, _service, _push]),
       builder: (context, _) {
         if (!_auth.isLoggedIn) return _buildSignedOut();
         return Scaffold(
@@ -80,7 +81,10 @@ class _FriendsPageState extends State<FriendsPage> {
                     showAddFriendDialog(context, service: _service),
               ),
               IconButton(
-                icon: const Icon(Icons.inbox),
+                icon: CountBadge(
+                  count: _auth.isLoggedIn ? _push.unreadCount : 0,
+                  child: const Icon(Icons.inbox),
+                ),
                 tooltip: '收件匣',
                 onPressed: () => Navigator.push(
                   context,
