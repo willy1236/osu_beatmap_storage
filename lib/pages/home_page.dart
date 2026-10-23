@@ -4,6 +4,7 @@ import '../services/auto_upload_service.dart';
 import '../widgets/danser_setup_gate.dart';
 import '../widgets/open_share_link_dialog.dart';
 import '../widgets/share_dialog.dart';
+import '../widgets/update_button.dart';
 import 'beatmap_list_page.dart';
 import 'replay_list_page.dart';
 
@@ -39,7 +40,10 @@ class _HomePageState extends State<HomePage> {
                 alignment: Alignment.bottomCenter,
                 child: Padding(
                   padding: EdgeInsets.only(bottom: 12),
-                  child: _AccountTile(),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [UpdateButton(), _AccountTile()],
+                  ),
                 ),
               ),
             ),

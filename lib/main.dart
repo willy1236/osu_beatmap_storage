@@ -8,6 +8,7 @@ import 'services/auth_service.dart';
 import 'services/auto_upload_service.dart';
 import 'services/cloud_presence_service.dart';
 import 'services/protocol_registrar.dart';
+import 'services/update_service.dart';
 
 void main(List<String> args) {
   // 從 osu-storage:// 連結啟動時，工作目錄沿用呼叫端（瀏覽器、Discord）的，
@@ -28,5 +29,7 @@ void main(List<String> args) {
   AppLinkService.instance.start();
   // 不等待：註冊 osu-storage:// 指向目前的執行檔，失敗不影響程式
   ProtocolRegistrar().registerIfNeeded();
+  // 不等待：查 GitHub 有沒有新版，有才在側欄顯示更新提示
+  UpdateService.instance.check();
   runApp(const OsuBeatmapApp());
 }

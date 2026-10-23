@@ -1,0 +1,39 @@
+# 推 v* tag 時建置 Windows 版，打包成 zip 建立 draft release。
+# 程式內的更新檢查只看已發佈的 release，補完說明、按 Publish 後使用者才會收到更新。
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.4
+          cache: true
+
+      - name: Build
+        shell: pwsh
+        run: |
+          $version = '${{ github.ref_name }}'.TrimStart('v')
+          flutter pub get
+          flutter build windows --release --build-name=$version --dart-define=APP_VERSION=$version
+
+      - name: Package
+        shell: pwsh
+        run: |
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "osu_beatmap_storage_${{ github.ref_name }}.zip"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: osu_beatmap_storage_${{ github.ref_name }}.zip
