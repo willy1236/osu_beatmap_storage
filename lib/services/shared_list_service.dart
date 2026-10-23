@@ -16,6 +16,7 @@ class SharedListResult extends CloudListResult {
     super.status, {
     super.entries,
     super.ownerUsername,
+    super.ownerAccountId,
     super.message,
     this.expired = false,
   });
@@ -73,9 +74,9 @@ class SharedListService {
       try {
         final body =
             jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
-        final owner =
-            (body['owner'] as Map<String, dynamic>)['username'] as String? ??
-            '';
+        final ownerMap = body['owner'] as Map<String, dynamic>;
+        final owner = ownerMap['username'] as String? ?? '';
+        final ownerId = ownerMap['account_id'];
         final entries = (body['entries'] as List)
             .map((e) => CloudEntry.fromJson(e as Map<String, dynamic>))
             .toList();
@@ -83,6 +84,9 @@ class SharedListService {
           CloudSyncStatus.success,
           entries: entries,
           ownerUsername: owner,
+          ownerAccountId: ownerId is String && ownerId.isNotEmpty
+              ? ownerId
+              : null,
         );
       } catch (_) {
         return const SharedListResult(

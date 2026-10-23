@@ -1,0 +1,323 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+
+import 'api_client.dart';
+import 'auth_service.dart';
+
+/// 好友或邀請列表上的一位域民
+class FriendPeer {
+  const FriendPeer({
+    required this.accountId,
+    required this.username,
+    this.picture,
+    this.time,
+  });
+
+  final String accountId;
+
+  /// 目前的代號；後端查不到域民資料時為空字串，顯示用 [displayName]
+  final String username;
+  final String? picture;
+
+  /// 好友列表為成為好友的時間，邀請列表為送出時間
+  final DateTime? time;
+
+  String get displayName => username.isEmpty ? '（未知的域民）' : username;
+
+  static FriendPeer fromJson(Map<String, dynamic> j, String timeKey) {
+    final pic = j['picture'] as String?;
+    return FriendPeer(
+      accountId: j['account_id'] as String,
+      username: j['username'] as String? ?? '',
+      picture: (pic == null || pic.isEmpty) ? null : pic,
+      time: DateTime.tryParse(j[timeKey] as String? ?? ''),
+    );
+  }
+}
+
+/// 與某位域民目前的好友關係
+enum FriendRelation { none, self, friends, outgoing, incoming }
+
+enum FriendActionStatus { sent, friends, done, failed }
+
+/// 送出、接受、拒絕、取消邀請的結果；不丟例外
+class FriendActionResult {
+  const FriendActionResult(this.status, {this.code, this.message});
+
+  final FriendActionStatus status;
+
+  /// 後端的錯誤碼（`err`），例如 `already_friends`；非後端錯誤時為 null
+  final String? code;
+  final String? message;
+
+  bool get ok => status != FriendActionStatus.failed;
+}
+
+/// 好友、收到與送出的邀請（`/social/*`）。
+///
+/// - 登入後自動讀取，登出或換帳號時清掉（寫法同 `CloudPresenceService`）
+/// - 送出、接受、拒絕、取消之後一律重讀，不樂觀更新：被對方封鎖時後端仍回「已送出」，
+///   本機列表以重讀的結果為準
+/// - 讀取失敗時保留上一次的結果並設 [error]
+class FriendService extends ChangeNotifier {
+  FriendService({ApiClient? api, AuthService? auth})
+    : _api = api ?? ApiClient.instance,
+      _auth = auth ?? AuthService.instance {
+    _auth.addListener(_onAuthChanged);
+    _onAuthChanged();
+  }
+
+  static final FriendService instance = FriendService();
+
+  final ApiClient _api;
+  final AuthService _auth;
+
+  List<FriendPeer> _friends = const [];
+  List<FriendPeer> _incoming = const [];
+  List<FriendPeer> _outgoing = const [];
+  bool _loaded = false;
+  bool _loading = false;
+  String? _error;
+  String? _sub;
+  Future<void>? _running;
+  bool _again = false;
+
+  List<FriendPeer> get friends => _friends;
+  List<FriendPeer> get incoming => _incoming;
+  List<FriendPeer> get outgoing => _outgoing;
+
+  /// 已讀到目前登入域民的資料
+  bool get loaded => _loaded;
+  bool get loading => _loading;
+
+  /// 最近一次讀取失敗的說明；成功後清掉
+  String? get error => _error;
+
+  static String _norm(String id) => id.toLowerCase();
+
+  /// 與 [accountId] 的關係；以本機已讀到的列表為準，尚未載入時為 [FriendRelation.none]
+  FriendRelation relationOf(String accountId) {
+    final id = _norm(accountId);
+    final me = _auth.sub;
+    if (me != null && _norm(me) == id) return FriendRelation.self;
+    bool has(List<FriendPeer> l) => l.any((p) => _norm(p.accountId) == id);
+    if (has(_friends)) return FriendRelation.friends;
+    if (has(_outgoing)) return FriendRelation.outgoing;
+    if (has(_incoming)) return FriendRelation.incoming;
+    return FriendRelation.none;
+  }
+
+  /// 重新讀取好友與邀請；讀取中再次呼叫時，等這次結束後再讀一次
+  Future<void> refresh() {
+    final running = _running;
+    if (running != null) {
+      _again = true;
+      return running;
+    }
+    return _running = _load().whenComplete(() => _running = null);
+  }
+
+  Future<void> _load() async {
+    do {
+      _again = false;
+      if (!_auth.isLoggedIn) return;
+      final sub = _auth.sub;
+      _loading = true;
+      notifyListeners();
+      String? err;
+      List<FriendPeer>? friends, incoming, outgoing;
+      try {
+        final r = await Future.wait([
+          _api.send('GET', '/social/friends'),
+          _api.send('GET', '/social/requests'),
+        ]);
+        for (final resp in r) {
+          if (resp.statusCode != 200) {
+            err = _errorFor(resp.statusCode, _errCode(resp), '讀取失敗').$2;
+          }
+        }
+        if (err == null) {
+          final f = _decode(r[0]);
+          final q = _decode(r[1]);
+          friends = _peers(f['friends'], 'since');
+          incoming = _peers(q['incoming'], 'created_at');
+          outgoing = _peers(q['outgoing'], 'created_at');
+        }
+      } on NotSignedInException catch (e) {
+        err = '$e';
+      } on TimeoutException {
+        err = '讀取失敗：連線逾時';
+      } catch (e) {
+        err = '讀取失敗：$e';
+      }
+      _loading = false;
+      // 讀取期間登出或換了帳號：結果不屬於目前的域民；換帳號時 _again 已設好，迴圈會再讀一次
+      if (!_auth.isLoggedIn || _auth.sub != sub) continue;
+      if (err == null) {
+        _friends = friends!;
+        _incoming = incoming!;
+        _outgoing = outgoing!;
+        _loaded = true;
+        _error = null;
+      } else {
+        _error = err;
+      }
+      notifyListeners();
+    } while (_again);
+  }
+
+  static Map<String, dynamic> _decode(http.Response resp) =>
+      jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
+
+  static List<FriendPeer> _peers(dynamic list, String timeKey) => [
+    for (final e in list as List)
+      FriendPeer.fromJson(e as Map<String, dynamic>, timeKey),
+  ];
+
+  /// `POST /osu/shared/{token}/friend-request`：對分享清單的擁有者送好友邀請
+  Future<FriendActionResult> sendViaShare(String token) => _act(
+    'POST',
+    '/osu/shared/${Uri.encodeComponent(token)}/friend-request',
+    notFound: '分享連結已失效',
+    parse: (body) => body['status'] == 'friends'
+        ? FriendActionStatus.friends
+        : FriendActionStatus.sent,
+  );
+
+  /// `POST /social/requests/{from_id}/accept`
+  Future<FriendActionResult> accept(String fromId) => _act(
+    'POST',
+    '/social/requests/${Uri.encodeComponent(fromId)}/accept',
+    notFound: '這筆邀請已不存在',
+    parse: (_) => FriendActionStatus.friends,
+  );
+
+  /// `POST /social/requests/{from_id}/reject`
+  Future<FriendActionResult> reject(String fromId) => _act(
+    'POST',
+    '/social/requests/${Uri.encodeComponent(fromId)}/reject',
+    notFound: '這筆邀請已不存在',
+  );
+
+  /// `DELETE /social/requests/{to_id}`
+  Future<FriendActionResult> cancel(String toId) => _act(
+    'DELETE',
+    '/social/requests/${Uri.encodeComponent(toId)}',
+    notFound: '這筆邀請已不存在',
+  );
+
+  Future<FriendActionResult> _act(
+    String method,
+    String path, {
+    required String notFound,
+    FriendActionStatus Function(Map<String, dynamic> body)? parse,
+  }) async {
+    FriendActionResult result;
+    try {
+      final resp = await _api.send(method, path);
+      if (resp.statusCode >= 200 && resp.statusCode < 300) {
+        var status = FriendActionStatus.done;
+        if (parse != null) {
+          try {
+            status = parse(_decode(resp));
+          } catch (_) {
+            return const FriendActionResult(
+              FriendActionStatus.failed,
+              message: '伺服器回應格式錯誤',
+            );
+          }
+        }
+        result = FriendActionResult(status);
+      } else {
+        final e = _errorFor(
+          resp.statusCode,
+          _errCode(resp),
+          '操作失敗',
+          notFound: notFound,
+        );
+        result = FriendActionResult(
+          FriendActionStatus.failed,
+          code: e.$1,
+          message: e.$2,
+        );
+      }
+    } on NotSignedInException catch (e) {
+      return FriendActionResult(
+        FriendActionStatus.failed,
+        code: 'unauthorized',
+        message: '$e',
+      );
+    } on TimeoutException {
+      return const FriendActionResult(
+        FriendActionStatus.failed,
+        message: '操作失敗：連線逾時',
+      );
+    } catch (e) {
+      return FriendActionResult(FriendActionStatus.failed, message: '操作失敗：$e');
+    }
+    // 成功與失敗都重讀：失敗（例如邀請已被取消）時本機列表可能已過期
+    await refresh();
+    return result;
+  }
+
+  static String? _errCode(http.Response resp) {
+    try {
+      return _decode(resp)['err'] as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 後端錯誤碼與 HTTP 狀態對應到 (code, 提示文字)
+  static (String?, String) _errorFor(
+    int status,
+    String? err,
+    String what, {
+    String notFound = '找不到這筆資料',
+  }) {
+    final code =
+        err ??
+        switch (status) {
+          401 => 'unauthorized',
+          404 => 'not_found',
+          429 => 'rate_limited',
+          503 => 'unavailable',
+          _ => null,
+        };
+    return (
+      code,
+      switch (code) {
+        'already_friends' => '你們已經是好友',
+        'friend_limit' => '好友已達上限',
+        'cannot_friend_self' => '不能對自己送邀請',
+        'rate_limited' => '今天送出的邀請太多，請稍後再試',
+        'blocked_by_you' => '你已封鎖這位域民',
+        'not_found' => notFound,
+        'unauthorized' => '登入已失效，請重新登入',
+        'unavailable' => '服務暫時無法使用，請稍後再試',
+        _ => '$what（HTTP $status）',
+      },
+    );
+  }
+
+  void _onAuthChanged() {
+    final sub = _auth.isLoggedIn ? _auth.sub : null;
+    if (sub == _sub) return;
+    _sub = sub;
+    final had = _loaded || _friends.isNotEmpty || _error != null;
+    _friends = _incoming = _outgoing = const [];
+    _loaded = false;
+    _error = null;
+    if (had) notifyListeners();
+    if (sub != null) refresh();
+  }
+
+  @override
+  void dispose() {
+    _auth.removeListener(_onAuthChanged);
+    super.dispose();
+  }
+}
