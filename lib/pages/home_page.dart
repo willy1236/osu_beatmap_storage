@@ -6,6 +6,7 @@ import '../widgets/open_share_link_dialog.dart';
 import '../widgets/share_dialog.dart';
 import '../widgets/update_button.dart';
 import 'beatmap_list_page.dart';
+import 'friends_page.dart';
 import 'replay_list_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -58,6 +59,11 @@ class _HomePageState extends State<HomePage> {
                 selectedIcon: Icon(Icons.play_circle),
                 label: Text('回放匯出'),
               ),
+              NavigationRailDestination(
+                icon: Icon(Icons.people_outline),
+                selectedIcon: Icon(Icons.people),
+                label: Text('好友'),
+              ),
             ],
           ),
           const VerticalDivider(width: 1, thickness: 1),
@@ -70,6 +76,7 @@ class _HomePageState extends State<HomePage> {
                   const DanserSetupGate(child: ReplayListPage())
                 else
                   const SizedBox.shrink(),
+                const FriendsPage(),
               ],
             ),
           ),

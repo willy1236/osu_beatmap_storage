@@ -7,6 +7,7 @@ import 'services/app_link_service.dart';
 import 'services/auth_service.dart';
 import 'services/auto_upload_service.dart';
 import 'services/cloud_presence_service.dart';
+import 'services/friend_service.dart';
 import 'services/protocol_registrar.dart';
 import 'services/realtime_service.dart';
 import 'services/update_service.dart';
@@ -26,6 +27,8 @@ void main(List<String> args) {
   AutoUploadService.instance.load();
   // 盡早建立：登入還原後自動讀取雲端清單，供圖譜查看頁標示「已在雲端」
   CloudPresenceService.instance;
+  // 盡早建立：登入還原後自動讀取好友與邀請
+  FriendService.instance;
   // 盡早建立：登入還原後連上即時事件通道，之後的通知與上線狀態都靠它
   RealtimeService.instance;
   // 盡早開始接收連結（冷啟動的第一條連結會先暫存到開始監聽）
