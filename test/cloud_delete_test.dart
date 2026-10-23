@@ -143,6 +143,25 @@ void main() {
       expect(find.text('Beta'), findsOneWidget);
     });
 
+    testWidgets('被搜尋藏起來的勾選不會被刪除，仍看得到的勾選保留', (t) async {
+      await t.pumpWidget(host());
+      await t.pumpAndSettle();
+      await checkRow(t, 0);
+      await checkRow(t, 2);
+      await t.enterText(find.byType(TextField), 'Gamma');
+      await t.pump();
+      await t.enterText(find.byType(TextField), '');
+      await t.pump();
+      await t.tap(find.byIcon(Icons.delete_outline));
+      await t.pumpAndSettle();
+      expect(find.textContaining('1 個圖譜集'), findsOneWidget);
+      await t.tap(find.widgetWithText(FilledButton, '刪除'));
+      await t.pumpAndSettle();
+      expect(deleted, [
+        [3],
+      ]);
+    });
+
     testWidgets('取消刪除：不呼叫、列表不變', (t) async {
       await t.pumpWidget(host());
       await t.pumpAndSettle();

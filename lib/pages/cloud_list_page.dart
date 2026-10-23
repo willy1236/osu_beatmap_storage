@@ -93,6 +93,10 @@ class _CloudListPageState extends State<CloudListPage> {
     localIds: widget.localIds,
   );
 
+  /// 篩選改變後移除被藏起來的勾選，下載與刪除只作用在看得到的項目
+  void _dropHiddenSelection() =>
+      _selected.retainAll(_filtered.map((e) => e.onlineId));
+
   void _selectAllMissing() {
     setState(() {
       _selected
@@ -249,10 +253,9 @@ class _CloudListPageState extends State<CloudListPage> {
                       border: OutlineInputBorder(),
                       isDense: true,
                     ),
-                    // 篩選改變時清掉勾選，下載與刪除只作用在看得到的項目
                     onChanged: (v) => setState(() {
                       _search = v;
-                      _selected.clear();
+                      _dropHiddenSelection();
                     }),
                   ),
                 ),
@@ -265,7 +268,7 @@ class _CloudListPageState extends State<CloudListPage> {
               selected: _onlyMissing,
               onSelected: (v) => setState(() {
                 _onlyMissing = v;
-                _selected.clear();
+                _dropHiddenSelection();
               }),
             ),
             TextButton(
