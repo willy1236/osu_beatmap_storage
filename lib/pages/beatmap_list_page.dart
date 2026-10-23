@@ -20,6 +20,8 @@ import '../services/prefs_service.dart';
 import '../services/realm_service.dart';
 import '../utils/beatmap_csv.dart';
 import '../utils/csv_parser.dart';
+import '../widgets/push_dialog.dart';
+import '../widgets/selectable_set_tile.dart';
 import '../widgets/beatmap_set_tile.dart';
 import '../widgets/csv_picker_dialog.dart';
 import 'cloud_list_page.dart';
@@ -49,6 +51,10 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
   bool _batchEnqueuing = false;
   String _searchQuery = '';
   String _osuDir = kDefaultOsuDir;
+
+  /// 勾選模式（推送給好友）：勾選中的 OnlineID
+  bool _selecting = false;
+  final Set<int> _pushSelected = {};
 
   @override
   void initState() {
@@ -237,6 +243,47 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
     }
   }
 
+  // ── 勾選模式（推送給好友）──────────────────────────────────────────────────
+
+  List<CloudEntry> _selectedEntries() => [
+    for (final s in _beatmapSets)
+      if (s.onlineID > 0 && _pushSelected.contains(s.onlineID)) toCloudEntry(s),
+  ];
+
+  List<Widget> _selectionActions() => [
+    ListenableBuilder(
+      listenable: AuthService.instance,
+      builder: (_, _) {
+        if (!AuthService.instance.isLoggedIn ||
+            _loading ||
+            _beatmapSets.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_selecting)
+              PushButton(
+                entries: _selectedEntries(),
+                onSent: () => setState(() {
+                  _selecting = false;
+                  _pushSelected.clear();
+                }),
+              ),
+            IconButton(
+              icon: Icon(_selecting ? Icons.close : Icons.checklist),
+              tooltip: _selecting ? '離開勾選模式' : '勾選圖譜推送給好友',
+              onPressed: () => setState(() {
+                _selecting = !_selecting;
+                _pushSelected.clear();
+              }),
+            ),
+          ],
+        );
+      },
+    ),
+  ];
+
   // ── 雲端清單 ───────────────────────────────────────────────────────────────
 
   void _openCloudList() {
@@ -254,6 +301,9 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
           canDelete: true,
           onDelete: CloudListService.instance.deleteSome,
           onClear: CloudListService.instance.clearAll,
+          selectionActionsBuilder: (selected) => [
+            PushButton(entries: selected),
+          ],
         ),
       ),
     );
@@ -447,6 +497,7 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
                   )
                 : const SizedBox.shrink(),
           ),
+          ..._selectionActions(),
           if (!_loading && _beatmapSets.isNotEmpty)
             _exporting
                 ? const Padding(
@@ -651,7 +702,16 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
             prototypeItem: _filtered.isEmpty
                 ? null
                 : BeatmapSetTile(row: _filtered.first),
-            itemBuilder: (ctx, i) => BeatmapSetTile(row: _filtered[i]),
+            itemBuilder: (ctx, i) => _selecting
+                ? SelectableSetTile(
+                    row: _filtered[i],
+                    selected: _pushSelected.contains(_filtered[i].onlineID),
+                    onChanged: (v) => setState(() {
+                      final id = _filtered[i].onlineID;
+                      v ? _pushSelected.add(id) : _pushSelected.remove(id);
+                    }),
+                  )
+                : BeatmapSetTile(row: _filtered[i]),
           ),
         ),
       ],

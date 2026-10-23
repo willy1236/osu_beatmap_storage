@@ -83,6 +83,10 @@ class FriendService extends ChangeNotifier {
   List<FriendPeer> _friends = const [];
   List<FriendPeer> _incoming = const [];
   List<FriendPeer> _outgoing = const [];
+  List<FriendPeer> _blocks = const [];
+  bool _blocksLoaded = false;
+  bool _blocksLoading = false;
+  String? _blocksError;
   bool _loaded = false;
   bool _loading = false;
   String? _error;
@@ -93,6 +97,12 @@ class FriendService extends ChangeNotifier {
   List<FriendPeer> get friends => _friends;
   List<FriendPeer> get incoming => _incoming;
   List<FriendPeer> get outgoing => _outgoing;
+
+  /// 封鎖名單；不隨登入自動讀取，進封鎖名單頁時呼叫 [refreshBlocks]
+  List<FriendPeer> get blocks => _blocks;
+  bool get blocksLoaded => _blocksLoaded;
+  bool get blocksLoading => _blocksLoading;
+  String? get blocksError => _blocksError;
 
   /// 已讀到目前登入域民的資料
   bool get loaded => _loaded;
@@ -231,6 +241,70 @@ class FriendService extends ChangeNotifier {
     notFound: '這筆邀請已不存在',
   );
 
+  /// `DELETE /social/friends/{account_id}`
+  Future<FriendActionResult> removeFriend(String id) => _act(
+    'DELETE',
+    '/social/friends/${Uri.encodeComponent(id)}',
+    notFound: '找不到這位好友',
+  );
+
+  /// `PUT /social/blocks/{account_id}`：封鎖並解除好友關係、移除雙方之間的邀請
+  Future<FriendActionResult> block(String id) async {
+    final r = await _act(
+      'PUT',
+      '/social/blocks/${Uri.encodeComponent(id)}',
+      notFound: '找不到這位域民',
+    );
+    if (r.ok && _blocksLoaded) await refreshBlocks();
+    return r;
+  }
+
+  /// `DELETE /social/blocks/{account_id}`：解除封鎖，好友關係不會恢復
+  Future<FriendActionResult> unblock(String id) async {
+    final r = await _act(
+      'DELETE',
+      '/social/blocks/${Uri.encodeComponent(id)}',
+      notFound: '找不到這位域民',
+    );
+    if (r.ok) await refreshBlocks();
+    return r;
+  }
+
+  /// `GET /social/blocks`；失敗時保留上一次的名單並設 [blocksError]
+  Future<void> refreshBlocks() async {
+    if (!_auth.isLoggedIn) return;
+    final sub = _auth.sub;
+    _blocksLoading = true;
+    notifyListeners();
+    String? err;
+    List<FriendPeer>? blocks;
+    try {
+      final resp = await _api.send('GET', '/social/blocks');
+      if (resp.statusCode != 200) {
+        err = _errorFor(resp.statusCode, _errCode(resp), '讀取失敗').$2;
+      } else {
+        blocks = _peers(_decode(resp)['blocks'], 'created_at');
+      }
+    } on NotSignedInException catch (e) {
+      err = '$e';
+    } on TimeoutException {
+      err = '讀取失敗：連線逾時';
+    } catch (e) {
+      err = '讀取失敗：$e';
+    }
+    _blocksLoading = false;
+    // 讀取期間登出或換了帳號：結果不屬於目前的域民
+    if (!_auth.isLoggedIn || _auth.sub != sub) return;
+    if (blocks != null) {
+      _blocks = blocks;
+      _blocksLoaded = true;
+      _blocksError = null;
+    } else {
+      _blocksError = err;
+    }
+    notifyListeners();
+  }
+
   Future<FriendActionResult> _act(
     String method,
     String path, {
@@ -316,7 +390,8 @@ class FriendService extends ChangeNotifier {
         'friend_limit' => '好友已達上限',
         'cannot_friend_self' => '不能對自己送邀請',
         'rate_limited' => '今天送出的邀請太多，請稍後再試',
-        'blocked_by_you' => '你已封鎖這位域民',
+        'blocked_by_you' => '你已封鎖這位域民，請先到封鎖名單解除封鎖',
+        'cannot_block_self' => '不能封鎖自己',
         'not_found' => notFound,
         'unauthorized' => '登入已失效，請重新登入',
         'unavailable' => '服務暫時無法使用，請稍後再試',
@@ -330,7 +405,9 @@ class FriendService extends ChangeNotifier {
     if (sub == _sub) return;
     _sub = sub;
     final had = _loaded || _friends.isNotEmpty || _error != null;
-    _friends = _incoming = _outgoing = const [];
+    _friends = _incoming = _outgoing = _blocks = const [];
+    _blocksLoaded = false;
+    _blocksError = null;
     _loaded = false;
     _error = null;
     if (had) notifyListeners();

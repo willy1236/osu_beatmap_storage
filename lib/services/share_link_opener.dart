@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app.dart' show appNavigatorKey;
 import '../pages/cloud_list_page.dart';
 import '../widgets/add_friend_button.dart';
+import '../widgets/block_owner_button.dart';
 import '../widgets/shared_copy_button.dart';
 import 'auth_service.dart';
 import 'local_library_service.dart';
@@ -77,6 +78,10 @@ class ShareLinkOpener {
             localIds: localIds!,
             extraActionsBuilder: (r) => [
               AddFriendButton(token: token, ownerAccountId: r.ownerAccountId),
+              BlockOwnerButton(
+                ownerAccountId: r.ownerAccountId,
+                ownerName: r.ownerUsername,
+              ),
               SharedCopyButton(token: token, count: r.entries.length),
             ],
             canRetry: (r) => !(r is SharedListResult && r.expired),
