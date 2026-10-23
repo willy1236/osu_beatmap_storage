@@ -13,6 +13,7 @@ class CloudListResult {
     this.status, {
     this.entries = const [],
     this.ownerUsername,
+    this.ownerAccountId,
     this.message,
   });
 
@@ -21,6 +22,9 @@ class CloudListResult {
 
   /// 別人的分享清單才有（T-08 使用）；自己的清單為 null
   final String? ownerUsername;
+
+  /// 別人的分享清單的擁有者 account_id；後端尚未提供時為 null
+  final String? ownerAccountId;
   final String? message;
 
   bool get ok => status == CloudSyncStatus.success;
