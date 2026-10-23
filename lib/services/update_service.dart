@@ -178,7 +178,13 @@ class UpdateService extends ChangeNotifier {
   /// 轉成給使用者看的失敗訊息，拿掉 `Exception: ` 之類的前綴
   @visibleForTesting
   static String describeError(Object e) {
-    final text = e.toString().replaceFirst(RegExp(r'^\w*Exception: '), '');
+    var text = e.toString().replaceFirst(
+      RegExp(r'^\w*Exception(\s*\[[^\]]*\])?: '),
+      '',
+    );
+    if (e is DioException) {
+      text = e.message?.isNotEmpty == true ? e.message! : '網路連線失敗';
+    }
     return '更新失敗：$text';
   }
 
@@ -297,9 +303,10 @@ void _extract(({String zip, String out}) args) {
 
 /// 更新腳本（內容必須維持純 ASCII，避免 Windows PowerShell 5.1 以 ANSI 碼頁誤解碼）。
 ///
-/// 流程：等舊程式結束（逾時就放棄）→ 把 Target 中與新版同名的項目移到 .update_backup
-/// → 複製新檔 → 重新啟動。任何失敗都盡力回滾並一定重啟；清理備份失敗只記 log。
-/// 只動程式檔，不碰使用者資料。錯誤寫進 update_error.log。
+/// 流程：等舊程式結束（逾時就放棄）→ 只有程式檔（exe、頂層 *.dll、data/）移到
+/// .update_backup 並整包替換，失敗時只回滾這些 → 其他項目合併複製（不刪 Target 內容，
+/// 失敗只記 log）→ 重新啟動。一定嘗試重啟；殘留的舊備份改名保留、不還原不刪除。
+/// 錯誤寫進 update_error.log。
 const _applyScript = r'''
 param([int]$AppPid, [string]$Source, [string]$Target, [string]$Exe, [string]$Started, [int]$WaitSeconds = 60)
 $ErrorActionPreference = 'Stop'
@@ -325,6 +332,7 @@ function Invoke-Retry([scriptblock]$Action, [string]$What) {
 function Move-Entry([string]$From, [string]$To) {
   if ([IO.Directory]::Exists($From)) { [IO.Directory]::Move($From, $To) } else { [IO.File]::Move($From, $To) }
 }
+# Merge copy: directories are merged recursively, files overwrite; nothing in Target is deleted.
 function Copy-Entry([string]$From, [string]$To) {
   if ([IO.Directory]::Exists($From)) {
     [void][IO.Directory]::CreateDirectory($To)
@@ -336,9 +344,10 @@ function Copy-Entry([string]$From, [string]$To) {
   }
 }
 
-# Wait for the old app. Hold the Process object so a reused PID is never mistaken for it.
+# Wait for the old app. Hold the Process object (and its handle) so a reused PID is never
+# mistaken for it.
 $proc = $null
-try { $proc = Get-Process -Id $AppPid -ErrorAction Stop } catch { $proc = $null }
+try { $proc = Get-Process -Id $AppPid -ErrorAction Stop; [void]$proc.Handle } catch { $proc = $null }
 if ($proc) {
   $exited = $false
   try {
@@ -355,63 +364,56 @@ if ($proc) {
 }
 Start-Sleep -Milliseconds 500
 
-# A backup left by an earlier run: if the marker file exists (kept outside the backup so a
-# half-finished delete cannot remove it) the update had succeeded and only the cleanup
-# failed, so just delete it; otherwise a rollback was interrupted, so restore it first.
+# Never delete or restore a backup left by an earlier run; just move it aside and keep it.
 $backup = Join-Path $Target '.update_backup'
-$marker = Join-Path $Target '.update_backup.success'
 if (Test-Path -LiteralPath $backup) {
-  if (-not (Test-Path -LiteralPath $marker)) {
-    foreach ($item in @(Get-ChildItem -LiteralPath $backup -Force)) {
-      $dest = Join-Path $Target $item.Name
-      if (Test-Path -LiteralPath $dest) {
-        [void](Invoke-Retry { Remove-Item -LiteralPath $dest -Recurse -Force } "remove $dest before restoring")
-      }
-      [void](Invoke-Retry { Move-Entry $item.FullName $dest } "restore leftover $($item.Name)")
-    }
-  }
-  Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue
-  if (Test-Path -LiteralPath $backup) {
+  $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+  $aside = Join-Path $Target ".update_backup_$stamp"
+  if (Invoke-Retry { Move-Entry $backup $aside } 'move old .update_backup aside') {
+    Write-Log "Kept a leftover backup from an earlier update as $aside (not restored)."
+  } else {
     $backup = Join-Path $Target ('.update_backup_' + [guid]::NewGuid().ToString('N').Substring(0, 8))
-    $marker = $backup + '.success'
+    Write-Log "Could not move the leftover .update_backup aside; using $backup for this update."
   }
 }
-Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue
+
+# Program items: the exe, top-level *.dll and data/. Only these are backed up and replaced
+# as a whole (and rolled back). Everything else in Source is merge-copied.
+function Test-Program([string]$Name) {
+  return ($Name -ieq $Exe) -or ($Name -ieq 'data') -or ($Name -like '*.dll')
+}
 
 $moved = New-Object System.Collections.ArrayList
-$copying = $false
+$copied = $false
 $ok = $false
 try {
   [void][IO.Directory]::CreateDirectory($backup)
 
-  # Back up everything the update will touch: every entry of Target that has the same name
-  # as an entry of Source, plus stale *.dll, the exe and data.
   $names = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
-  foreach ($e in [IO.Directory]::GetFileSystemEntries($Source)) { [void]$names.Add([IO.Path]::GetFileName($e)) }
   foreach ($e in [IO.Directory]::GetFiles($Target, '*.dll')) { [void]$names.Add([IO.Path]::GetFileName($e)) }
   [void]$names.Add($Exe)
   [void]$names.Add('data')
   foreach ($name in $names) {
-    if ($name -like '.update_backup*' -or $name -eq 'update_error.log') { continue }
     if (Test-Path -LiteralPath (Join-Path $Target $name)) {
       Move-Entry (Join-Path $Target $name) (Join-Path $backup $name)
       [void]$moved.Add($name)
     }
   }
 
-  $copying = $true
+  $copied = $true
   foreach ($e in [IO.Directory]::GetFileSystemEntries($Source)) {
-    Copy-Entry $e (Join-Path $Target ([IO.Path]::GetFileName($e)))
+    $name = [IO.Path]::GetFileName($e)
+    if (Test-Program $name) { Copy-Entry $e (Join-Path $Target $name) }
   }
-  [IO.File]::WriteAllText($marker, 'ok')
   $ok = $true
 } catch {
-  Write-Log "Update failed, rolling back: $_"
+  Write-Log "Update failed, rolling back program files: $_"
   try {
-    if ($copying) {
+    if ($copied) {
       foreach ($e in [IO.Directory]::GetFileSystemEntries($Source)) {
-        $dest = Join-Path $Target ([IO.Path]::GetFileName($e))
-        if (Test-Path -LiteralPath $dest) {
+        $name = [IO.Path]::GetFileName($e)
+        $dest = Join-Path $Target $name
+        if ((Test-Program $name) -and (Test-Path -LiteralPath $dest)) {
           [void](Invoke-Retry { Remove-Item -LiteralPath $dest -Recurse -Force } "remove new $dest")
         }
       }
@@ -427,11 +429,19 @@ try {
   }
 }
 
-# Backup cleanup after a successful update must never undo it; failures are only logged.
+# Other items: merge copy. A failure here is only logged; the new program files stay.
 if ($ok) {
-  if (Invoke-Retry { Remove-Item -LiteralPath $backup -Recurse -Force } 'clean up backup') {
-    Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue
-  }
+  try {
+    foreach ($e in [IO.Directory]::GetFileSystemEntries($Source)) {
+      $name = [IO.Path]::GetFileName($e)
+      if (-not (Test-Program $name)) {
+        $dest = Join-Path $Target $name
+        [void](Invoke-Retry { Copy-Entry $e $dest } "merge $name")
+      }
+    }
+  } catch { Write-Log "Merge error: $_" }
+  # Backup cleanup must never undo the update; failures are only logged.
+  [void](Invoke-Retry { Remove-Item -LiteralPath $backup -Recurse -Force } 'clean up backup')
 }
 
 try {
