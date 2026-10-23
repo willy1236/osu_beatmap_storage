@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../constants.dart';
+import '../models/beatmap_set_row.dart';
 import '../models/osu_realm_models.dart';
 import 'beatmap_detail_sheet.dart';
 import 'cloud_presence_badge.dart';
@@ -7,44 +7,28 @@ import 'download_button.dart';
 import 'mode_icon.dart';
 
 class BeatmapSetTile extends StatelessWidget {
-  final BeatmapSetInfo set;
+  final BeatmapSetRow row;
 
-  const BeatmapSetTile({super.key, required this.set});
+  const BeatmapSetTile({super.key, required this.row});
 
   @override
   Widget build(BuildContext context) {
-    final meta = set.beatmaps.isNotEmpty ? set.beatmaps.first.metadata : null;
-    final title = (meta?.titleUnicode?.isNotEmpty == true)
-        ? meta!.titleUnicode!
-        : (meta?.title ?? '（未知標題）');
-    final artist = (meta?.artistUnicode?.isNotEmpty == true)
-        ? meta!.artistUnicode!
-        : (meta?.artist ?? '（未知藝術家）');
-
-    final stars =
-        set.beatmaps.map((b) => b.starRating).where((s) => s > 0).toList()
-          ..sort();
-
-    final statusText = kStatusLabel[set.status] ?? '?';
-
-    final added = set.dateAdded.toLocal();
-    final addedStr =
-        '${added.year}/${added.month.toString().padLeft(2, '0')}/${added.day.toString().padLeft(2, '0')}';
+    final stars = row.stars;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       child: ListTile(
-        leading: ModeIcon(beatmaps: set.beatmaps),
-        title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+        leading: ModeIcon(label: row.modeLabel),
+        title: Text(row.title, maxLines: 1, overflow: TextOverflow.ellipsis),
         subtitle: Text(
-          '$artist  ·  $statusText  ·  ${set.beatmaps.length} 難度  ·  $addedStr',
+          '${row.artist}  ·  ${row.statusText}  ·  ${row.difficultyCount} 難度  ·  ${row.addedStr}',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CloudPresenceBadge(onlineID: set.onlineID),
+            CloudPresenceBadge(onlineID: row.onlineID),
             if (stars.isNotEmpty)
               Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -65,11 +49,15 @@ class BeatmapSetTile extends StatelessWidget {
                     ),
                 ],
               ),
-            DownloadButton(onlineID: set.onlineID, title: title),
+            DownloadButton(onlineID: row.onlineID, title: row.title),
           ],
         ),
-        onTap: () =>
-            _showDetails(context, set.beatmaps.toList(), title, artist),
+        onTap: () => _showDetails(
+          context,
+          row.set.beatmaps.toList(),
+          row.title,
+          row.artist,
+        ),
       ),
     );
   }

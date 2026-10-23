@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:realm/realm.dart';
 import '../constants.dart';
+import '../models/beatmap_set_row.dart';
 import '../models/cloud_entry.dart';
 import '../models/download_job.dart';
 import '../models/osu_realm_models.dart';
@@ -34,6 +35,12 @@ class BeatmapListPage extends StatefulWidget {
 class _BeatmapListPageState extends State<BeatmapListPage> {
   Realm? _realm;
   List<BeatmapSetInfo> _beatmapSets = [];
+
+  /// 與 [_beatmapSets] 同順序，載入時一次算好的顯示資料
+  List<BeatmapSetRow> _rows = [];
+
+  /// 依 [_searchQuery] 過濾後的 [_rows]，只在資料或搜尋字串改變時重算
+  List<BeatmapSetRow> _filtered = [];
   String? _error;
   bool _loading = false;
   bool _exporting = false;
@@ -77,6 +84,8 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
       _loading = true;
       _error = null;
       _beatmapSets = [];
+      _rows = [];
+      _filtered = [];
     });
     try {
       _realm?.close();
@@ -91,9 +100,12 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
         for (final s in sets)
           if (s.onlineID > 0) s.onlineID,
       });
+      final rows = sets.map(BeatmapSetRow.from).toList();
       setState(() {
         _realm = realm;
         _beatmapSets = sets;
+        _rows = rows;
+        _filtered = _applyFilter(rows, _searchQuery);
         _loading = false;
       });
       if (autoUpload) {
@@ -355,7 +367,7 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
 
     setState(() => _batchEnqueuing = true);
     try {
-      for (final s in toDownload) {
+      for (final s in toDownload.map((r) => r.set)) {
         final meta = s.beatmaps.isNotEmpty ? s.beatmaps.first.metadata : null;
         final title = (meta?.titleUnicode?.isNotEmpty == true)
             ? meta!.titleUnicode!
@@ -373,18 +385,13 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
 
   // ── 搜尋過濾 ───────────────────────────────────────────────────────────────
 
-  List<BeatmapSetInfo> get _filtered {
-    if (_searchQuery.isEmpty) return _beatmapSets;
-    final q = _searchQuery.toLowerCase();
-    return _beatmapSets.where((s) {
-      if (s.beatmaps.isEmpty) return false;
-      final meta = s.beatmaps.first.metadata;
-      if (meta == null) return false;
-      return (meta.title?.toLowerCase().contains(q) ?? false) ||
-          (meta.artist?.toLowerCase().contains(q) ?? false) ||
-          (meta.titleUnicode?.toLowerCase().contains(q) ?? false) ||
-          (meta.artistUnicode?.toLowerCase().contains(q) ?? false);
-    }).toList();
+  static List<BeatmapSetRow> _applyFilter(
+    List<BeatmapSetRow> rows,
+    String query,
+  ) {
+    if (query.isEmpty) return rows;
+    final q = query.toLowerCase();
+    return rows.where((r) => r.searchText.contains(q)).toList();
   }
 
   // ── Build ──────────────────────────────────────────────────────────────────
@@ -621,13 +628,20 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
               border: OutlineInputBorder(),
               isDense: true,
             ),
-            onChanged: (v) => setState(() => _searchQuery = v),
+            onChanged: (v) => setState(() {
+              _searchQuery = v;
+              _filtered = _applyFilter(_rows, v);
+            }),
           ),
         ),
         Expanded(
           child: ListView.builder(
             itemCount: _filtered.length,
-            itemBuilder: (ctx, i) => BeatmapSetTile(set: _filtered[i]),
+            // 每列等高：拖捲軸大跨度跳轉時不必逐列量高度
+            prototypeItem: _filtered.isEmpty
+                ? null
+                : BeatmapSetTile(row: _filtered.first),
+            itemBuilder: (ctx, i) => BeatmapSetTile(row: _filtered[i]),
           ),
         ),
       ],

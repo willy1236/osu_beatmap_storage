@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
-import '../models/osu_realm_models.dart';
 
 class ModeIcon extends StatelessWidget {
-  final Iterable<BeatmapInfo> beatmaps;
+  final String label;
 
-  const ModeIcon({super.key, required this.beatmaps});
+  const ModeIcon({super.key, required this.label});
 
   @override
   Widget build(BuildContext context) {
-    final modes = beatmaps.map((b) => b.ruleset?.shortName ?? '?').toSet();
-    final label = modes.length == 1 ? modes.first : '♫';
     return CircleAvatar(
       radius: 18,
       backgroundColor: Theme.of(context).colorScheme.primaryContainer,
