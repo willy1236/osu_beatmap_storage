@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
 import '../services/friend_service.dart';
+import '../widgets/invite_links_section.dart';
 import '../widgets/peer_avatar.dart';
 
 /// 好友頁：好友列表、收到的邀請（接受、拒絕）、送出的邀請（取消）。
@@ -152,6 +153,7 @@ class _FriendsPageState extends State<FriendsPage> {
               ),
             ],
           ),
+        const InviteLinksSection(),
       ],
     );
   }
