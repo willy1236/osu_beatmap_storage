@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/auto_upload_service.dart';
+import '../services/notification_service.dart';
 import '../widgets/danser_setup_gate.dart';
+import '../widgets/count_badge.dart';
 import '../widgets/open_share_link_dialog.dart';
 import '../widgets/settings_dialog.dart';
 import '../widgets/share_dialog.dart';
@@ -23,6 +25,27 @@ class _HomePageState extends State<HomePage> {
   /// 第一次切到「回放匯出」後才建立該頁，danser 的檢查與下載延後到那時
   bool _replayOpened = false;
 
+  static const _friendsIndex = 2;
+
+  @override
+  void initState() {
+    super.initState();
+    NotificationService.instance.intent.addListener(_onNotificationIntent);
+  }
+
+  @override
+  void dispose() {
+    NotificationService.instance.intent.removeListener(_onNotificationIntent);
+    super.dispose();
+  }
+
+  /// 點了通知：切到好友頁，細節由 [FriendsPage] 處理
+  void _onNotificationIntent() {
+    if (NotificationService.instance.intent.value != null) {
+      _select(_friendsIndex);
+    }
+  }
+
   void _select(int i) => setState(() {
     _selectedIndex = i;
     if (i == 1) _replayOpened = true;
@@ -30,6 +53,14 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final notifications = NotificationService.instance;
+    return ListenableBuilder(
+      listenable: notifications,
+      builder: (context, _) => _buildScaffold(notifications.badgeCount),
+    );
+  }
+
+  Widget _buildScaffold(int badge) {
     return Scaffold(
       body: Row(
         children: [
@@ -53,21 +84,27 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
             ),
-            destinations: const [
-              NavigationRailDestination(
+            destinations: [
+              const NavigationRailDestination(
                 icon: Icon(Icons.library_music_outlined),
                 selectedIcon: Icon(Icons.library_music),
                 label: Text('圖譜查看'),
               ),
-              NavigationRailDestination(
+              const NavigationRailDestination(
                 icon: Icon(Icons.play_circle_outline),
                 selectedIcon: Icon(Icons.play_circle),
                 label: Text('回放匯出'),
               ),
               NavigationRailDestination(
-                icon: Icon(Icons.people_outline),
-                selectedIcon: Icon(Icons.people),
-                label: Text('好友'),
+                icon: CountBadge(
+                  count: badge,
+                  child: const Icon(Icons.people_outline),
+                ),
+                selectedIcon: CountBadge(
+                  count: badge,
+                  child: const Icon(Icons.people),
+                ),
+                label: const Text('好友'),
               ),
             ],
           ),

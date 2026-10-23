@@ -5,6 +5,8 @@ import '../services/friend_list_opener.dart';
 import '../services/friend_service.dart';
 import '../widgets/invite_links_section.dart';
 import '../widgets/add_friend_dialog.dart';
+import '../widgets/count_badge.dart';
+import '../services/notification_service.dart';
 import '../services/push_service.dart';
 import '../widgets/friend_search.dart';
 import '../widgets/peer_action_menu.dart';
@@ -15,7 +17,13 @@ import 'inbox_page.dart';
 /// 好友頁：好友列表、收到的邀請（接受、拒絕）、送出的邀請（取消）。
 /// 未登入時只提示登入。
 class FriendsPage extends StatefulWidget {
-  const FriendsPage({super.key, this.service, this.auth, this.push});
+  const FriendsPage({
+    super.key,
+    this.service,
+    this.auth,
+    this.push,
+    this.intent,
+  });
 
   /// 測試用；預設使用 [FriendService.instance]
   final FriendService? service;
@@ -25,6 +33,9 @@ class FriendsPage extends StatefulWidget {
 
   /// 測試用；預設使用 [PushService.instance]
   final PushService? push;
+
+  /// 點通知後要切到的畫面；測試用，預設使用 [NotificationService.instance]
+  final ValueNotifier<NotificationTarget?>? intent;
 
   @override
   State<FriendsPage> createState() => _FriendsPageState();
@@ -36,11 +47,62 @@ class _FriendsPageState extends State<FriendsPage> {
 
   String _query = '';
 
+  final _scroll = ScrollController();
+  final _invitesKey = GlobalKey();
+
+  ValueNotifier<NotificationTarget?> get _intent =>
+      widget.intent ?? NotificationService.instance.intent;
+
   @override
   void initState() {
     super.initState();
+    _intent.addListener(_onIntent);
     // 開好友頁時重讀，讓「看清單」入口反映對方最新的公開設定
     if (_auth.isLoggedIn) _service.refresh();
+  }
+
+  @override
+  void dispose() {
+    _intent.removeListener(_onIntent);
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  /// 點了通知：邀請捲到「收到的邀請」區，推送開收件匣；處理完把 intent 設回 null
+  void _onIntent() {
+    final target = _intent.value;
+    if (target == null) return;
+    _intent.value = null;
+    switch (target) {
+      case NotificationTarget.invites:
+        _scrollToInvites();
+      case NotificationTarget.inbox:
+        if (_auth.isLoggedIn) _openInbox();
+    }
+  }
+
+  void _openInbox() => Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => InboxPage(service: _push, auth: _auth)),
+  );
+
+  /// ListView 只建立畫面附近的項目，標題還沒建立時先捲到底再找一次
+  void _scrollToInvites([int tries = 0]) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_auth.isLoggedIn) return;
+      final ctx = _invitesKey.currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 250),
+        );
+      } else if (tries < 5 && _scroll.hasClients) {
+        _scroll.jumpTo(_scroll.position.maxScrollExtent);
+        _scrollToInvites(tries + 1);
+      }
+    });
+    // 沒有其他東西觸發重繪時，post-frame callback 不會自己跑
+    WidgetsBinding.instance.scheduleFrame();
   }
 
   FriendService get _service => widget.service ?? FriendService.instance;
@@ -66,7 +128,7 @@ class _FriendsPageState extends State<FriendsPage> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([_auth, _service]),
+      listenable: Listenable.merge([_auth, _service, _push]),
       builder: (context, _) {
         if (!_auth.isLoggedIn) return _buildSignedOut();
         return Scaffold(
@@ -80,14 +142,12 @@ class _FriendsPageState extends State<FriendsPage> {
                     showAddFriendDialog(context, service: _service),
               ),
               IconButton(
-                icon: const Icon(Icons.inbox),
-                tooltip: '收件匣',
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => InboxPage(service: _push, auth: _auth),
-                  ),
+                icon: CountBadge(
+                  count: _auth.isLoggedIn ? _push.unreadCount : 0,
+                  child: const Icon(Icons.inbox),
                 ),
+                tooltip: '收件匣',
+                onPressed: _openInbox,
               ),
               IconButton(
                 icon: const Icon(Icons.block),
@@ -153,6 +213,7 @@ class _FriendsPageState extends State<FriendsPage> {
       return const Center(child: CircularProgressIndicator());
     }
     return ListView(
+      controller: _scroll,
       children: [
         if (s.error != null)
           MaterialBanner(
@@ -177,7 +238,10 @@ class _FriendsPageState extends State<FriendsPage> {
               _menu(p, removable: true),
             ],
           ),
-        _header('收到的邀請（${s.incoming.length}）'),
+        KeyedSubtree(
+          key: _invitesKey,
+          child: _header('收到的邀請（${s.incoming.length}）'),
+        ),
         if (s.incoming.isEmpty) const _Empty('沒有收到的邀請'),
         for (final p in s.incoming)
           _tile(
