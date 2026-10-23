@@ -365,6 +365,26 @@ void main() {
       expect(auth.status, AuthStatus.reloginRequired);
     });
 
+    test('refresh 途中登出：結果作廢，維持未登入、不寫回 token', () async {
+      await loggedIn();
+      now = now.add(const Duration(hours: 2));
+      final gate = Completer<void>();
+      final auth = build((req) async {
+        if (req.url.path.endsWith('/token')) {
+          await gate.future;
+          return http.Response(tokenBody(access: 'access-2'), 200);
+        }
+        return http.Response('', 200);
+      });
+      await auth.init();
+      final pending = auth.accessToken();
+      await auth.logout();
+      gate.complete();
+      expect(await pending, isNull);
+      expect(auth.status, AuthStatus.loggedOut);
+      expect(store.value, isNull);
+    });
+
     test('refreshAccessToken：強制 refresh；rejected 已不是目前 token 時不再送', () async {
       final auth = await loggedIn();
       final a = build(

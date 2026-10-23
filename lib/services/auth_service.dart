@@ -252,6 +252,8 @@ class AuthService extends ChangeNotifier {
     } catch (_) {
       return null;
     }
+    // 等待期間已登出或換了 token：結果作廢，不改登入狀態也不寫回 token
+    if (!identical(_tokens, old)) return null;
     if (resp.statusCode == 400 ||
         resp.statusCode == 401 ||
         resp.statusCode == 403) {
