@@ -407,21 +407,6 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Center(child: Text('共 ${_beatmapSets.length} 個圖譜集')),
             ),
-          if (!_loading && _beatmapSets.isNotEmpty)
-            _exporting
-                ? const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12),
-                    child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  )
-                : IconButton(
-                    icon: const Icon(Icons.download),
-                    tooltip: '匯出 CSV',
-                    onPressed: _exportCsv,
-                  ),
           ListenableBuilder(
             listenable: Listenable.merge([
               AuthService.instance,
@@ -452,6 +437,21 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
                   )
                 : const SizedBox.shrink(),
           ),
+          if (!_loading && _beatmapSets.isNotEmpty)
+            _exporting
+                ? const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 12),
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : IconButton(
+                    icon: const Icon(Icons.download),
+                    tooltip: '匯出 CSV',
+                    onPressed: _exportCsv,
+                  ),
           _importing
               ? const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 12),
