@@ -209,15 +209,27 @@ class FriendService extends ChangeNotifier {
     notFound: '這筆邀請已不存在',
   );
 
+  /// `POST /social/requests`：對指定域民送好友邀請（對方已邀請過我時直接成為好友）
+  Future<FriendActionResult> sendToAccount(String accountId) => _act(
+    'POST',
+    '/social/requests',
+    jsonBody: {'account_id': accountId},
+    notFound: '找不到這位域民',
+    parse: (body) => body['status'] == 'friends'
+        ? FriendActionStatus.friends
+        : FriendActionStatus.sent,
+  );
+
   Future<FriendActionResult> _act(
     String method,
     String path, {
+    Object? jsonBody,
     required String notFound,
     FriendActionStatus Function(Map<String, dynamic> body)? parse,
   }) async {
     FriendActionResult result;
     try {
-      final resp = await _api.send(method, path);
+      final resp = await _api.send(method, path, jsonBody: jsonBody);
       if (resp.statusCode >= 200 && resp.statusCode < 300) {
         var status = FriendActionStatus.done;
         if (parse != null) {
