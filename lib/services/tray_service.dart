@@ -158,7 +158,9 @@ class WindowTrayPlatform
     await trayManager.setIcon(_iconAsset);
     await trayManager.setToolTip('osu! Beatmap Viewer');
     await trayManager.setContextMenu(
-      Menu(items: [MenuItem(key: _quitKey, label: '結束')]),
+      Menu(
+        items: [MenuItem(key: _quitKey, label: '結束')],
+      ),
     );
   }
 
