@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/autostart_service.dart';
 import '../services/prefs_service.dart';
 import '../services/tray_service.dart';
+import 'auto_upload_setting.dart';
 import 'browse_setting.dart';
 import 'presence_setting.dart';
 
@@ -20,6 +21,7 @@ final List<SettingsEntry> defaultSettingsEntries = [
   SettingsEntry(title: '關閉視窗時', builder: (_) => const CloseActionSetting()),
   SettingsEntry(title: '開機', builder: (_) => const AutostartSetting()),
   SettingsEntry(title: '公開我的清單', builder: (_) => const BrowseSetting()),
+  SettingsEntry(title: '自動上傳', builder: (_) => const AutoUploadSetting()),
   SettingsEntry(title: '上線狀態', builder: (_) => const PresenceSetting()),
   // —— 新項目插入處 ——
 ];
