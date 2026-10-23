@@ -144,6 +144,8 @@ class AuthService extends ChangeNotifier {
   _Tokens? _tokens;
   Completer<Map<String, String>?>? _callback;
   Future<String?>? _refreshing;
+  // 進行中的 refresh 是替哪一組 token 送的；登出再登入後不能沿用舊 session 的 refresh
+  _Tokens? _refreshingFor;
 
   AuthStatus get status => _status;
   bool get isLoggedIn => _status == AuthStatus.loggedIn;
@@ -206,10 +208,7 @@ class AuthService extends ChangeNotifier {
     if (tokens.expiresAt.isAfter(_now().add(_refreshMargin))) {
       return Future.value(tokens.access);
     }
-    // 同時間只送一次 refresh：Hydra 會 rotate refresh token，並發會讓其中一個失效
-    return _refreshing ??= _refresh(
-      tokens,
-    ).whenComplete(() => _refreshing = null);
+    return _startRefresh(tokens);
   }
 
   /// API 回 401（access token 被拒）時呼叫：強制 refresh 並回傳新的 access token。
@@ -224,9 +223,7 @@ class AuthService extends ChangeNotifier {
     if (rejected != null && tokens.access != rejected) {
       return Future.value(tokens.access);
     }
-    return _refreshing ??= _refresh(
-      tokens,
-    ).whenComplete(() => _refreshing = null);
+    return _startRefresh(tokens);
   }
 
   /// 伺服器在新 token 下仍回 401（例如帳號被停權）時呼叫：清掉登入資料，轉成需要重新登入
@@ -234,6 +231,21 @@ class AuthService extends ChangeNotifier {
     if (_status != AuthStatus.loggedIn) return;
     await _clear();
     _setStatus(AuthStatus.reloginRequired);
+  }
+
+  /// 同時間只送一次 refresh：Hydra 會 rotate refresh token，並發會讓其中一個失效
+  Future<String?> _startRefresh(_Tokens tokens) {
+    final running = _refreshing;
+    if (running != null && identical(_refreshingFor, tokens)) return running;
+    final f = _refresh(tokens);
+    _refreshing = f;
+    _refreshingFor = tokens;
+    f.whenComplete(() {
+      if (!identical(_refreshing, f)) return;
+      _refreshing = null;
+      _refreshingFor = null;
+    }).ignore();
+    return f;
   }
 
   Future<String?> _refresh(_Tokens old) async {
@@ -252,8 +264,18 @@ class AuthService extends ChangeNotifier {
     } catch (_) {
       return null;
     }
-    // 等待期間已登出或換了 token：結果作廢，不改登入狀態也不寫回 token
-    if (!identical(_tokens, old)) return null;
+    // 等待期間已登出或換了 token：結果作廢，不改登入狀態也不寫回 token；
+    // 已換發的新 refresh token 順手撤銷，不留下有效的 token
+    if (!identical(_tokens, old)) {
+      if (resp.statusCode == 200) {
+        try {
+          final m = jsonDecode(resp.body) as Map<String, dynamic>;
+          final refresh = m['refresh_token'];
+          if (refresh is String) unawaited(_revoke(refresh));
+        } catch (_) {}
+      }
+      return null;
+    }
     if (resp.statusCode == 400 ||
         resp.statusCode == 401 ||
         resp.statusCode == 403) {
@@ -401,28 +423,31 @@ class AuthService extends ChangeNotifier {
   /// 以免把瀏覽器裡的析域登入與其他服務一起登出；下一次登入帶 prompt=login 讓使用者可以換帳號
   Future<void> logout() async {
     final tokens = _tokens;
+    // 先讓 token 失效，等待撤銷期間回來的 refresh 結果才會被捨棄
+    _tokens = null;
     try {
       await _prefs.setForceLogin(true);
     } catch (_) {}
-    if (tokens != null) {
-      try {
-        await _http
-            .post(
-              Uri.parse('$kAuthIssuer/oauth2/revoke'),
-              body: {
-                'token': tokens.refresh,
-                'token_type_hint': 'refresh_token',
-                'client_id': kAuthClientId,
-              },
-            )
-            .timeout(const Duration(seconds: 5));
-      } catch (_) {
-        // 撤銷失敗不擋登出：token 仍會在本機清掉
-      }
-    }
+    // 撤銷失敗不擋登出：token 仍會在本機清掉
+    if (tokens != null) await _revoke(tokens.refresh);
     await _clear();
     _lastError = null;
     _setStatus(AuthStatus.loggedOut);
+  }
+
+  Future<void> _revoke(String refresh) async {
+    try {
+      await _http
+          .post(
+            Uri.parse('$kAuthIssuer/oauth2/revoke'),
+            body: {
+              'token': refresh,
+              'token_type_hint': 'refresh_token',
+              'client_id': kAuthClientId,
+            },
+          )
+          .timeout(const Duration(seconds: 5));
+    } catch (_) {}
   }
 
   Future<void> _clear() async {

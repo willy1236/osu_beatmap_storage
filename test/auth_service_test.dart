@@ -385,6 +385,79 @@ void main() {
       expect(store.value, isNull);
     });
 
+    test('撤銷等待期間 refresh 回來：結果作廢並撤銷新的 refresh token，不閃成需要重新登入', () async {
+      await loggedIn();
+      now = now.add(const Duration(hours: 2));
+      final refreshGate = Completer<void>();
+      final revokeGate = Completer<void>();
+      final revoked = <String>[];
+      final auth = build((req) async {
+        if (req.url.path.endsWith('/token')) {
+          await refreshGate.future;
+          return http.Response(
+            tokenBody(access: 'access-2', refresh: 'refresh-2'),
+            200,
+          );
+        }
+        revoked.add(req.bodyFields['token']!);
+        await revokeGate.future;
+        return http.Response('', 200);
+      });
+      await auth.init();
+      final statuses = <AuthStatus>[];
+      auth.addListener(() => statuses.add(auth.status));
+      final pending = auth.accessToken();
+      final out = auth.logout();
+      await pumpEventQueue();
+      refreshGate.complete();
+      expect(await pending, isNull);
+      await pumpEventQueue();
+      revokeGate.complete();
+      await out;
+      await pumpEventQueue();
+      expect(revoked, containsAll(['refresh-1', 'refresh-2']));
+      expect(statuses, isNot(contains(AuthStatus.reloginRequired)));
+      expect(auth.status, AuthStatus.loggedOut);
+      expect(store.value, isNull);
+    });
+
+    test('登出後重新登入：不沿用舊 session 進行中的 refresh', () async {
+      await loggedIn();
+      now = now.add(const Duration(hours: 2));
+      final oldGate = Completer<void>();
+      var tokenCalls = 0;
+      final auth = build(
+        (req) async {
+          if (req.url.path.endsWith('/token')) {
+            tokenCalls++;
+            // 第一次是舊 session 的 refresh（卡住），之後是登入與新 session 的 refresh
+            if (tokenCalls == 1) {
+              await oldGate.future;
+              return http.Response(tokenBody(access: 'old-2'), 200);
+            }
+            return http.Response(
+              tokenBody(access: 'access-$tokenCalls'),
+              200,
+            );
+          }
+          return http.Response('', 200);
+        },
+        openBrowser: browser(
+          (u) => {'code': 'c', 'state': u.queryParameters['state']!},
+        ),
+      );
+      await auth.init();
+      final stale = auth.accessToken();
+      await auth.logout();
+      await auth.login();
+      expect(auth.isLoggedIn, isTrue);
+      final fresh = await auth.refreshAccessToken();
+      expect(fresh, 'access-3');
+      oldGate.complete();
+      expect(await stale, isNull);
+      expect(await auth.accessToken(), 'access-3');
+    });
+
     test('refreshAccessToken：強制 refresh；rejected 已不是目前 token 時不再送', () async {
       final auth = await loggedIn();
       final a = build(
