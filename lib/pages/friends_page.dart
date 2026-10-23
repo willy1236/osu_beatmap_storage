@@ -2,18 +2,23 @@ import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
 import '../services/friend_service.dart';
+import '../services/push_service.dart';
 import '../widgets/peer_avatar.dart';
+import 'inbox_page.dart';
 
 /// 好友頁：好友列表、收到的邀請（接受、拒絕）、送出的邀請（取消）。
 /// 未登入時只提示登入。
 class FriendsPage extends StatefulWidget {
-  const FriendsPage({super.key, this.service, this.auth});
+  const FriendsPage({super.key, this.service, this.auth, this.push});
 
   /// 測試用；預設使用 [FriendService.instance]
   final FriendService? service;
 
   /// 測試用；預設使用 [AuthService.instance]
   final AuthService? auth;
+
+  /// 測試用；預設使用 [PushService.instance]
+  final PushService? push;
 
   @override
   State<FriendsPage> createState() => _FriendsPageState();
@@ -25,6 +30,7 @@ class _FriendsPageState extends State<FriendsPage> {
 
   FriendService get _service => widget.service ?? FriendService.instance;
   AuthService get _auth => widget.auth ?? AuthService.instance;
+  PushService get _push => widget.push ?? PushService.instance;
 
   Future<void> _run(
     FriendPeer p,
@@ -52,6 +58,16 @@ class _FriendsPageState extends State<FriendsPage> {
           appBar: AppBar(
             title: const Text('好友'),
             actions: [
+              IconButton(
+                icon: const Icon(Icons.inbox),
+                tooltip: '收件匣',
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => InboxPage(service: _push, auth: _auth),
+                  ),
+                ),
+              ),
               IconButton(
                 icon: const Icon(Icons.refresh),
                 tooltip: '重新整理',
