@@ -25,7 +25,7 @@
 ## 使用方法
 
 1. **開啟程式** — 執行 `build.bat` 或直接以 Flutter 執行 `flutter run -d windows`
-2. **選取 Realm 檔案** — 首次啟動時點擊 AppBar 的 📂 資料夾圖示，選取 osu!lazer 的 `client.realm`（通常位於 `D:\osu!lazer\client.realm`）；選取的路徑會自動記憶，下次無需重新選取
+2. **選取 Realm 檔案** — 首次啟動時點擊 AppBar 的 📂 資料夾圖示，選取 osu!lazer 的 `client.realm`（預設位於 `%APPDATA%\osu\client.realm`；若在 osu!lazer 設定中搬移過資料位置，則在搬移後的資料夾內）；選取的路徑會自動記憶，下次無需重新選取
 3. **搜尋** — 在頂部輸入框輸入關鍵字（支援標題、藝術家）
 4. **匯出 CSV** — 點擊 AppBar 的 `↓` 圖示，CSV 將儲存至程式執行目錄下的 `exports/` 資料夾
 5. **匯入 CSV** — 點擊 `↑` 圖示，選擇先前匯出的 CSV 檔案（亦位於 `exports/` 資料夾）
