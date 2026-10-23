@@ -22,7 +22,10 @@ class _BlockedPageState extends State<BlockedPage> {
   @override
   void initState() {
     super.initState();
-    _service.refreshBlocks();
+    // refreshBlocks 會同步 notifyListeners，不能在 build 期間呼叫
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _service.refreshBlocks();
+    });
   }
 
   Future<void> _unblock(FriendPeer p) async {
