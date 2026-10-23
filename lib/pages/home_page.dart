@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/friend_service.dart';
 import '../services/notification_service.dart';
+import '../utils/route_utils.dart';
 import '../widgets/danser_setup_gate.dart';
 import '../widgets/count_badge.dart';
 import '../widgets/open_share_link_dialog.dart';
@@ -61,11 +62,12 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
-  /// 點了通知：切到好友頁，細節由 [FriendsPage] 處理
+  /// 點了通知：切到好友頁，細節由 [FriendsPage] 處理。
+  /// 上層開著對話框時不切換（視窗已還原，使用者回到對話框繼續操作）
   void _onNotificationIntent() {
-    if (_notifications.intent.value != null) {
-      _select(_friendsIndex);
-    }
+    if (_notifications.intent.value == null) return;
+    if (topRouteIsPopup(Navigator.of(context))) return;
+    _select(_friendsIndex);
   }
 
   /// 好友頁在 [IndexedStack] 裡常駐，不會因為切換而重建；每次切到好友頁（含點通知）就重讀，

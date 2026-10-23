@@ -104,9 +104,7 @@ void main() {
       p.dispose();
       f.dispose();
     });
-    await t.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 50)),
-    );
+    await t.runAsync(pumpEventQueue); // 登入後的第一次讀取（不依賴真實時間）
     await t.pumpWidget(
       MaterialApp(
         home: HomePage(
@@ -234,16 +232,46 @@ void main() {
     expect(find.byType(InboxPage), findsNothing);
   });
 
-  testWidgets('點通知時開著對話框：關掉對話框再處理', (t) async {
+  testWidgets('點通知時開著對話框：只還原視窗，不 pop、不切頁、不重讀', (t) async {
     final s = await pumpHome(t);
     showDialog<void>(
       context: t.element(find.byType(HomePage)),
       builder: (_) => const AlertDialog(title: Text('設定中')),
     );
     await t.pumpAndSettle();
-    expect(find.text('設定中'), findsOneWidget);
-    s.n.intent.value = NotificationTarget.invites;
+    final before = friendGets();
+    for (final target in NotificationTarget.values) {
+      s.n.intent.value = target;
+      await t.pumpAndSettle();
+      expect(find.text('設定中'), findsOneWidget);
+      expect(find.byType(InboxPage), findsNothing);
+      expect(s.n.intent.value, isNull);
+    }
+    await t.runAsync(pumpEventQueue);
+    expect(friendGets(), before);
+    final rail = t.widget<NavigationRail>(find.byType(NavigationRail));
+    expect(rail.selectedIndex, 0);
+  });
+
+  testWidgets('對話框關掉後再點通知：照常切到好友頁', (t) async {
+    final s = await pumpHome(t);
+    showDialog<void>(
+      context: t.element(find.byType(HomePage)),
+      builder: (_) => const AlertDialog(title: Text('設定中')),
+    );
     await t.pumpAndSettle();
-    expect(find.text('設定中'), findsNothing);
+    Navigator.of(t.element(find.byType(HomePage))).pop();
+    await t.pumpAndSettle();
+    s.n.intent.value = NotificationTarget.inbox;
+    await t.pumpAndSettle();
+    expect(
+      t
+          .widget<NavigationRail>(
+            find.byType(NavigationRail, skipOffstage: false),
+          )
+          .selectedIndex,
+      2,
+    );
+    expect(find.byType(InboxPage), findsOneWidget);
   });
 }

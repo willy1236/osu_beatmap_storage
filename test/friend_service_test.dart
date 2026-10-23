@@ -154,6 +154,22 @@ void main() {
       expect(r.code, 'rate_limited');
     });
 
+    test('429：只有送出邀請說邀請太多，其他操作用一般文案', () async {
+      final (s, _) = await make();
+      be.override = (r) =>
+          r.method != 'GET' ? jsonResp({'err': 'rate_limited'}, 429) : null;
+      const tooMany = '今天送出的邀請太多，請稍後再試';
+      const generic = '請求太頻繁，請稍後再試';
+      expect((await s.sendViaShare('t')).message, tooMany);
+      expect((await s.sendToAccount(bId)).message, tooMany);
+      expect((await s.accept(bId)).message, generic);
+      expect((await s.reject(bId)).message, generic);
+      expect((await s.cancel(bId)).message, generic);
+      expect((await s.removeFriend(bId)).message, generic);
+      expect((await s.block(bId)).message, generic);
+      expect((await s.unblock(bId)).message, generic);
+    });
+
     test('讀取列表遇 429：用一般的限流文案，不說邀請太多', () async {
       final (s, _) = await make();
       be.override = (r) =>

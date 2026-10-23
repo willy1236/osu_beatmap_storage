@@ -7,6 +7,7 @@ import '../widgets/invite_links_section.dart';
 import '../widgets/add_friend_dialog.dart';
 import '../widgets/count_badge.dart';
 import '../services/notification_service.dart';
+import '../utils/route_utils.dart';
 import '../services/push_service.dart';
 import '../widgets/friend_search.dart';
 import '../widgets/peer_action_menu.dart';
@@ -57,11 +58,8 @@ class _FriendsPageState extends State<FriendsPage> {
   void initState() {
     super.initState();
     _intent.addListener(_onIntent);
-    // 單獨開啟好友頁時重讀；放在首幀之後，避免 build 期間通知其他 Listener。
-    // 在 HomePage 裡好友頁常駐，每次切到該頁的重讀由 HomePage 負責
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _auth.isLoggedIn) _service.refresh();
-    });
+    // 重讀由 HomePage 在每次切到好友頁時觸發（好友頁常駐，initState 只跑一次）；
+    // 登入後的第一次讀取由 FriendService 自己負責
   }
 
   @override
@@ -76,8 +74,9 @@ class _FriendsPageState extends State<FriendsPage> {
     final target = _intent.value;
     if (target == null) return;
     _intent.value = null;
-    // 上面可能疊著別的 route（分享清單、收件匣、設定對話框）：先回到最底層，
-    // 也避免收件匣被重複疊上去
+    // 上層開著對話框：只還原視窗（已做），不打斷使用者，這次通知不處理
+    if (topRouteIsPopup(Navigator.of(context))) return;
+    // 上面疊著一般頁面（分享清單、收件匣）：先回到最底層，也避免收件匣被重複疊上去
     Navigator.of(context).popUntil((r) => r.isFirst);
     switch (target) {
       case NotificationTarget.invites:
