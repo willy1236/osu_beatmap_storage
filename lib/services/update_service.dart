@@ -132,28 +132,90 @@ class UpdateService extends ChangeNotifier {
 
       final script = File(p.join(work.path, 'apply_update.ps1'));
       await script.writeAsString(_applyScript);
-      await Process.start('powershell', [
-        '-NoProfile',
-        '-ExecutionPolicy',
-        'Bypass',
-        '-WindowStyle',
-        'Hidden',
-        '-File',
-        script.path,
-        '-AppPid',
-        '$pid',
-        '-Source',
-        source.path,
-        '-Target',
-        p.dirname(Platform.resolvedExecutable),
-        '-Exe',
-        _exeName,
-      ], mode: ProcessStartMode.detached);
+      final started = File(p.join(work.path, 'started.flag'));
+      final ok = await launchApplyScript(
+        start: () => Process.start(
+          'powershell',
+          applyScriptArgs(
+            script: script.path,
+            appPid: pid,
+            source: source.path,
+            target: p.dirname(Platform.resolvedExecutable),
+            exe: _exeName,
+            started: started.path,
+          ),
+          // 不能用 detached：GUI 程式以 DETACHED_PROCESS 啟動 powershell，
+          // 腳本完全不會執行。normal 模式不開主控台視窗，子程序在本程式結束後仍會存活。
+        ),
+        started: started,
+      );
+      if (!ok) {
+        throw Exception('更新程式沒有啟動，請改為手動下載 zip 更新');
+      }
       exit(0);
     } catch (e) {
       _error = '更新失敗：$e';
       _setStatus(UpdateStatus.failed, null);
     }
+  }
+
+  @visibleForTesting
+  static const applyScriptSource = _applyScript;
+
+  /// 組出啟動 [_applyScript] 的 powershell 參數。參數以 list 傳給 Process.start，
+  /// 由 Dart 負責 CreateProcess 的 quoting，不經 cmd，所以路徑含空格、`%`、`&` 都安全。
+  @visibleForTesting
+  static List<String> applyScriptArgs({
+    required String script,
+    required int appPid,
+    required String source,
+    required String target,
+    required String exe,
+    required String started,
+  }) => [
+    '-NoProfile',
+    '-ExecutionPolicy',
+    'Bypass',
+    '-WindowStyle',
+    'Hidden',
+    '-File',
+    script,
+    '-AppPid',
+    '$appPid',
+    '-Source',
+    source,
+    '-Target',
+    target,
+    '-Exe',
+    exe,
+    '-Started',
+    started,
+  ];
+
+  /// 啟動腳本並等它寫出 [started] 標記，確認真的跑起來才回傳 true。
+  /// 逾時或啟動丟例外回傳 false（逾時會嘗試終止已啟動的程序）。
+  @visibleForTesting
+  static Future<bool> launchApplyScript({
+    required Future<Process> Function() start,
+    required File started,
+    Duration timeout = const Duration(seconds: 10),
+    Duration interval = const Duration(milliseconds: 100),
+  }) async {
+    Process? proc;
+    try {
+      proc = await start();
+    } catch (e) {
+      debugPrint('啟動更新腳本失敗：$e');
+      return false;
+    }
+    final watch = Stopwatch()..start();
+    while (watch.elapsed < timeout) {
+      if (started.existsSync()) return true;
+      await Future<void>.delayed(interval);
+    }
+    if (started.existsSync()) return true;
+    proc.kill();
+    return false;
   }
 
   void _setStatus(UpdateStatus status, double? progress) {
@@ -210,8 +272,9 @@ void _extract(({String zip, String out}) args) {
 /// 等程式結束 → 舊程式檔移到 .update_backup → 複製新檔 → 重新啟動。
 /// 複製失敗就把備份搬回去，錯誤寫進 update_error.log。只動程式檔，不碰資料。
 const _applyScript = r'''
-param([int]$AppPid, [string]$Source, [string]$Target, [string]$Exe)
+param([int]$AppPid, [string]$Source, [string]$Target, [string]$Exe, [string]$Started)
 $ErrorActionPreference = 'Stop'
+Set-Content -LiteralPath $Started -Value 'started'
 Wait-Process -Id $AppPid -Timeout 60 -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 500
 

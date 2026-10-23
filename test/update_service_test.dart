@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -25,6 +26,7 @@ UpdateService _service(
 );
 
 void main() {
+  _applyScriptTests();
   group('isNewer', () {
     test('比較 x.y.z 數字', () {
       expect(UpdateService.isNewer('2.2.0', '2.1.0'), isTrue);
@@ -83,4 +85,121 @@ void main() {
       expect(called, isFalse);
     });
   });
+}
+
+void _applyScriptTests() {
+  group('applyScriptArgs', () {
+    test('路徑原樣放進獨立元素，不自行加引號', () {
+      final args = UpdateService.applyScriptArgs(
+        script: r'C:/Users/A B/Temp/a.ps1',
+        appPid: 42,
+        source: r'C:/x %TEMP% & ^ (1)/files',
+        target: r'D:/App Dir',
+        exe: 'app.exe',
+        started: r'C:/Users/A B/Temp/started.flag',
+      );
+      expect(args[args.indexOf('-File') + 1], r'C:/Users/A B/Temp/a.ps1');
+      expect(args[args.indexOf('-AppPid') + 1], '42');
+      expect(args[args.indexOf('-Source') + 1], r'C:/x %TEMP% & ^ (1)/files');
+      expect(args[args.indexOf('-Target') + 1], r'D:/App Dir');
+      expect(
+        args[args.indexOf('-Started') + 1],
+        r'C:/Users/A B/Temp/started.flag',
+      );
+    });
+  });
+
+  group('launchApplyScript', () {
+    late Directory dir;
+    setUp(() => dir = Directory.systemTemp.createTempSync('upd_test'));
+    tearDown(() => dir.deleteSync(recursive: true));
+
+    test('標記出現就回傳 true', () async {
+      final flag = File('${dir.path}/started.flag');
+      final ok = await UpdateService.launchApplyScript(
+        start: () async {
+          Future<void>.delayed(
+            const Duration(milliseconds: 50),
+            () => flag.writeAsStringSync('started'),
+          );
+          return await Process.start('cmd', ['/c', 'exit']);
+        },
+        started: flag,
+        timeout: const Duration(seconds: 5),
+        interval: const Duration(milliseconds: 10),
+      );
+      expect(ok, isTrue);
+    }, skip: !Platform.isWindows);
+
+    test('逾時沒有標記回傳 false', () async {
+      final ok = await UpdateService.launchApplyScript(
+        start: () => Process.start('cmd', ['/c', 'exit']),
+        started: File('${dir.path}/started.flag'),
+        timeout: const Duration(milliseconds: 200),
+        interval: const Duration(milliseconds: 10),
+      );
+      expect(ok, isFalse);
+    }, skip: !Platform.isWindows);
+
+    test('啟動丟例外回傳 false', () async {
+      final ok = await UpdateService.launchApplyScript(
+        start: () async => throw const ProcessException('x', []),
+        started: File('${dir.path}/started.flag'),
+        timeout: const Duration(milliseconds: 200),
+      );
+      expect(ok, isFalse);
+    });
+  });
+
+  test(
+    '真實腳本：路徑含空格與 % 也能啟動並完成替換',
+    () async {
+      final root = Directory.systemTemp.createTempSync('upd real');
+      addTearDown(() {
+        try {
+          root.deleteSync(recursive: true);
+        } on FileSystemException {
+          // 剛啟動的程序可能還鎖著資料夾，留給系統清理
+        }
+      });
+      final base = '${root.path}/a b %TEMP% & ^ (x)';
+      final source = Directory('$base/src')..createSync(recursive: true);
+      final target = Directory('$base/app')..createSync(recursive: true);
+      File('${source.path}/new.dll').writeAsStringSync('new');
+      // 用會立刻結束的真實 exe 當作「新版執行檔」
+      File(
+        '${Platform.environment['SystemRoot']}/System32/hostname.exe',
+      ).copySync('${source.path}/run.exe');
+      File('${target.path}/old.dll').writeAsStringSync('old');
+      final script = File('$base/apply.ps1')
+        ..writeAsStringSync(UpdateService.applyScriptSource);
+      final started = File('$base/started.flag');
+
+      final ok = await UpdateService.launchApplyScript(
+        start: () => Process.start(
+          'powershell',
+          UpdateService.applyScriptArgs(
+            script: script.path,
+            appPid: 999999, // 不存在的程序，Wait-Process 立即略過
+            source: source.path,
+            target: target.path,
+            exe: 'run.exe',
+            started: started.path,
+          ),
+        ),
+        started: started,
+        timeout: const Duration(seconds: 30),
+      );
+      expect(ok, isTrue);
+      // 標記出現時腳本還在跑，等替換完成（Source 被清掉是最後一步）
+      for (var i = 0; i < 150 && source.existsSync(); i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      expect(File('${target.path}/new.dll').existsSync(), isTrue);
+      expect(File('${target.path}/old.dll').existsSync(), isFalse);
+      expect(File('${target.path}/run.exe').existsSync(), isTrue);
+    },
+    skip: !Platform.isWindows,
+    timeout: const Timeout(Duration(seconds: 40)),
+  );
 }
