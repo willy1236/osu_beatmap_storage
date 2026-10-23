@@ -40,7 +40,8 @@ class NotificationService extends ChangeNotifier {
        _friends = friends ?? FriendService.instance,
        _push = push ?? PushService.instance,
        _toast = toast ?? LocalNotifierToast(),
-       _restoreWindow = restoreWindow ?? (() => TrayService.instance.restore()) {
+       _restoreWindow =
+           restoreWindow ?? (() => TrayService.instance.restore()) {
     _cancels = [
       _realtime.on('friend_request', (_) => unawaited(onFriendRequest())),
       _realtime.on('friend_added', (_) => unawaited(onFriendAdded())),
@@ -49,6 +50,10 @@ class NotificationService extends ChangeNotifier {
     for (final l in [_auth, _friends, _push]) {
       l.addListener(notifyListeners);
     }
+    _sub = _auth.isLoggedIn ? _auth.sub : null;
+    _auth.addListener(_onAuthChanged);
+    _friends.addListener(_pruneNotified);
+    _push.addListener(_pruneNotified);
   }
 
   static final NotificationService instance = NotificationService();
@@ -64,9 +69,11 @@ class NotificationService extends ChangeNotifier {
   final Future<void> Function() _restoreWindow;
   late final List<void Function()> _cancels;
 
-  /// 已經通知過的邀請（accountId）與推送（id），避免連續事件造成重複通知
+  /// 已經通知過的邀請（accountId）與推送（id），避免連續事件造成重複通知。
+  /// 該筆離開 incoming／inbox 時移除（拒絕後再邀仍會通知），登出或換帳號時清空
   final Set<String> _notifiedInvites = {};
   final Set<String> _notifiedPushes = {};
+  String? _sub;
 
   /// 點通知後要切到的畫面；消費者處理完設回 null
   final ValueNotifier<NotificationTarget?> intent = ValueNotifier(null);
@@ -74,6 +81,21 @@ class NotificationService extends ChangeNotifier {
   /// 側欄「好友」紅點的數字：收到的邀請數加未讀推送數；未登入為 0
   int get badgeCount =>
       _auth.isLoggedIn ? _friends.incoming.length + _push.unreadCount : 0;
+
+  void _onAuthChanged() {
+    final sub = _auth.isLoggedIn ? _auth.sub : null;
+    if (sub == _sub) return;
+    _sub = sub;
+    _notifiedInvites.clear();
+    _notifiedPushes.clear();
+  }
+
+  void _pruneNotified() {
+    _notifiedInvites.retainAll(
+      _friends.incoming.map((p) => p.accountId.toLowerCase()),
+    );
+    _notifiedPushes.retainAll(_push.items.map((p) => p.id));
+  }
 
   Future<void> onFriendAdded() => _friends.refresh();
 
@@ -142,6 +164,9 @@ class NotificationService extends ChangeNotifier {
     for (final l in [_auth, _friends, _push]) {
       l.removeListener(notifyListeners);
     }
+    _auth.removeListener(_onAuthChanged);
+    _friends.removeListener(_pruneNotified);
+    _push.removeListener(_pruneNotified);
     intent.dispose();
     super.dispose();
   }

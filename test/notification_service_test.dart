@@ -24,22 +24,21 @@ class FakeToast implements ToastPlatform {
   }) async => shown.add((title: title, body: body, onClick: onClick));
 }
 
-Map<String, dynamic> pushJson(String id, String from, String msg,
-        {bool read = false}) =>
-    {
-      'id': id,
-      'from': {'account_id': bId, 'username': from, 'picture': null},
-      'message': msg,
-      'entries': [
-        {
-          'online_id': 1,
-          'title': 't',
-          'date_added': '2026-10-01T00:00:00Z',
-        },
-      ],
-      'created_at': '2026-10-02T00:00:00Z',
-      'read': read,
-    };
+Map<String, dynamic> pushJson(
+  String id,
+  String from,
+  String msg, {
+  bool read = false,
+}) => {
+  'id': id,
+  'from': {'account_id': bId, 'username': from, 'picture': null},
+  'message': msg,
+  'entries': [
+    {'online_id': 1, 'title': 't', 'date_added': '2026-10-01T00:00:00Z'},
+  ],
+  'created_at': '2026-10-02T00:00:00Z',
+  'read': read,
+};
 
 void main() {
   late FakeFriendBackend be;
@@ -118,6 +117,50 @@ void main() {
     expect(s.n.badgeCount, 1);
     await s.n.onFriendRequest();
     expect(toast.shown, hasLength(1));
+  });
+
+  test('邀請被拒絕（離開 incoming）後再邀：再次發 toast', () async {
+    final s = await make();
+    be.requests = {
+      'incoming': [peerJson(bId, '小明')],
+      'outgoing': [],
+    };
+    await s.n.onFriendRequest();
+    expect(toast.shown, hasLength(1));
+    be.requests = {'incoming': [], 'outgoing': []};
+    await s.f.refresh();
+    be.requests = {
+      'incoming': [peerJson(bId, '小明')],
+      'outgoing': [],
+    };
+    await s.n.onFriendRequest();
+    expect(toast.shown, hasLength(2));
+  });
+
+  test('推送離開收件匣後同 id 再出現：再次發 toast', () async {
+    final s = await make();
+    pushes = [pushJson('p1', '小華', '嗨')];
+    await s.n.onPush();
+    expect(toast.shown, hasLength(1));
+    pushes = [];
+    await s.p.refresh();
+    pushes = [pushJson('p1', '小華', '嗨')];
+    await s.n.onPush();
+    expect(toast.shown, hasLength(2));
+  });
+
+  test('登出後列表與紅點清空（notified 同時清空）', () async {
+    final s = await make();
+    be.requests = {
+      'incoming': [peerJson(bId, '小明')],
+      'outgoing': [],
+    };
+    await s.n.onFriendRequest();
+    expect(toast.shown, hasLength(1));
+    await s.a.logout();
+    await settle();
+    expect(s.f.incoming, isEmpty);
+    expect(s.n.badgeCount, 0);
   });
 
   test('push：新的未讀推送發 toast，附言取前 40 字；無附言顯示圖譜數', () async {
