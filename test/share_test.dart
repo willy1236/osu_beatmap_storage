@@ -189,6 +189,34 @@ void main() {
       expect(find.text('osu-storage://share/tok2'), findsOneWidget);
     });
 
+    testWidgets('讀取失敗時只提供重試，不提供產生連結', (t) async {
+      final calls = <String>[];
+      var fail = true;
+      final s = ShareService(
+        api: ApiClient(
+          httpClient: MockClient((r) async {
+            calls.add(r.method);
+            return fail
+                ? http.Response('', 503)
+                : http.Response('{"token":"tok1"}', 200);
+          }),
+          tokenProvider: () async => 't',
+          refreshToken: (_) async => null,
+          onUnauthorized: () async {},
+          baseUrl: 'https://api.test',
+        ),
+      );
+      await pump(t, s);
+      expect(find.text('產生連結'), findsNothing);
+      expect(find.text('重試'), findsOneWidget);
+
+      fail = false;
+      await t.tap(find.text('重試'));
+      await t.pumpAndSettle();
+      expect(calls, ['GET', 'GET']);
+      expect(find.text('osu-storage://share/tok1'), findsOneWidget);
+    });
+
     testWidgets('撤銷要確認，成功後回到沒有連結', (t) async {
       final calls = <String>[];
       await pump(t, svc(calls, initial: 'abc'));
