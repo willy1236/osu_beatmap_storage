@@ -40,6 +40,22 @@ Map<String, dynamic> pushJson(
   'read': read,
 };
 
+/// 測試用 AuthService：sub 由測試直接切換，走「不經登出直接換帳號」的路徑
+class _SwitchAuth extends AuthService {
+  _SwitchAuth(this._subValue);
+  String _subValue;
+  @override
+  bool get isLoggedIn => true;
+  @override
+  String? get sub => _subValue;
+  @override
+  Future<String?> accessToken() async => 'tok';
+  void switchTo(String sub) {
+    _subValue = sub;
+    notifyListeners();
+  }
+}
+
 void main() {
   late FakeFriendBackend be;
   List<dynamic> pushes = [];
@@ -149,7 +165,63 @@ void main() {
     expect(toast.shown, hasLength(2));
   });
 
-  test('登出後列表與紅點清空（notified 同時清空）', () async {
+  test('換帳號後同一筆邀請與推送再收到：會再通知', () async {
+    final auth = _SwitchAuth(meId);
+    final rt = RealtimeService(auth: makeAuth(loggedIn: false));
+    final f = FriendService(api: be.api, auth: auth);
+    final p = PushService(
+      api: be.api,
+      auth: auth,
+      friends: f,
+      onCollected: () {},
+    );
+    final n = NotificationService(
+      auth: auth,
+      realtime: rt,
+      friends: f,
+      push: p,
+      toast: toast,
+      restoreWindow: () async {},
+    );
+    addTearDown(() {
+      n.dispose();
+      rt.dispose();
+      p.dispose();
+      f.dispose();
+    });
+    await pumpEventQueue();
+    be.requests = {
+      'incoming': [peerJson(bId, '小明')],
+      'outgoing': [],
+    };
+    pushes = [pushJson('p1', '小華', '嗨')];
+    await n.onFriendRequest();
+    await n.onPush();
+    expect(toast.shown, hasLength(2));
+    // 同一個事件再來一次：已通知過，不重複
+    await n.onFriendRequest();
+    await n.onPush();
+    expect(toast.shown, hasLength(2));
+
+    // 換成另一個帳號（不經登出），新帳號一開始沒有任何邀請與推送
+    be.requests = {'incoming': [], 'outgoing': []};
+    pushes = [];
+    auth.switchTo(cId);
+    await pumpEventQueue();
+    expect(f.loaded, isTrue);
+    expect(n.badgeCount, 0);
+    // 新帳號收到同一個人的邀請、同 id 的推送：要再通知，不因舊帳號的記錄被吞掉
+    be.requests = {
+      'incoming': [peerJson(bId, '小明')],
+      'outgoing': [],
+    };
+    pushes = [pushJson('p1', '小華', '嗨')];
+    await n.onFriendRequest();
+    await n.onPush();
+    expect(toast.shown, hasLength(4));
+  });
+
+  test('登出後列表與紅點清空', () async {
     final s = await make();
     be.requests = {
       'incoming': [peerJson(bId, '小明')],
