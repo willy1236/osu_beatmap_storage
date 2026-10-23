@@ -75,6 +75,29 @@ class TrayService {
     onQuitSelected: () => quit(),
   );
 
+  /// 程式啟動時初始化系統匣；[minimized] 為 true（開機自動啟動）時縮到系統匣。
+  /// 任何一步失敗都只記 log，不丟例外。縮到系統匣沒成功時，原生視窗在自動啟動下尚未
+  /// 顯示（見 flutter_window.cpp），沒人叫出就會在背景跑卻沒有視窗也沒有系統匣圖示，
+  /// 所以失敗時盡力把視窗顯示出來
+  Future<void> start({required bool minimized}) async {
+    try {
+      await init();
+      if (minimized) await hideToTray();
+    } catch (e) {
+      debugPrint('系統匣初始化失敗：$e');
+      if (!minimized) return;
+      try {
+        await _platform.removeTrayIcon();
+      } catch (_) {}
+      try {
+        await _platform.showWindow();
+        _inTray = false;
+      } catch (e2) {
+        debugPrint('顯示視窗失敗：$e2');
+      }
+    }
+  }
+
   /// 使用者按了視窗的關閉鈕。設定為 ask 時跳對話框，取消則什麼都不做
   Future<void> handleCloseRequested() async {
     if (_handling) return;

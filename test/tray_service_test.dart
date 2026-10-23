@@ -5,6 +5,12 @@ import 'package:osu_beatmap_storage/services/tray_service.dart';
 
 class _FakePlatform implements TrayPlatform {
   final calls = <String>[];
+  final failing = <String>{};
+  void _rec(String c) {
+    calls.add(c);
+    if (failing.contains(c)) throw StateError('$c 失敗');
+  }
+
   late VoidCallback onClose, onClick, onQuit;
 
   @override
@@ -16,19 +22,19 @@ class _FakePlatform implements TrayPlatform {
     onClose = onCloseRequested;
     onClick = onTrayIconClick;
     onQuit = onQuitSelected;
-    calls.add('init');
+    _rec('init');
   }
 
   @override
-  Future<void> hideWindow() async => calls.add('hide');
+  Future<void> hideWindow() async => _rec('hide');
   @override
-  Future<void> showWindow() async => calls.add('show');
+  Future<void> showWindow() async => _rec('show');
   @override
-  Future<void> destroyWindow() async => calls.add('destroy');
+  Future<void> destroyWindow() async => _rec('destroy');
   @override
-  Future<void> showTrayIcon() async => calls.add('trayOn');
+  Future<void> showTrayIcon() async => _rec('trayOn');
   @override
-  Future<void> removeTrayIcon() async => calls.add('trayOff');
+  Future<void> removeTrayIcon() async => _rec('trayOff');
 }
 
 void main() {
@@ -129,6 +135,32 @@ void main() {
     platform.onQuit();
     await Future<void>.delayed(Duration.zero);
     expect(platform.calls, ['trayOff', 'destroy']);
+  });
+
+  test('start：自動啟動且成功時縮到系統匣', () async {
+    await service.start(minimized: true);
+    expect(platform.calls, ['init', 'trayOn', 'hide']);
+    expect(service.inTray, isTrue);
+  });
+
+  test('start：自動啟動時 init 失敗，改為顯示視窗且不丟例外', () async {
+    platform.failing.add('init');
+    await service.start(minimized: true);
+    expect(platform.calls, ['init', 'trayOff', 'show']);
+    expect(service.inTray, isFalse);
+  });
+
+  test('start：自動啟動時顯示系統匣圖示失敗，改為顯示視窗', () async {
+    platform.failing.add('trayOn');
+    await service.start(minimized: true);
+    expect(platform.calls, contains('show'));
+    expect(platform.calls, isNot(contains('hide')));
+  });
+
+  test('start：一般啟動 init 失敗只記 log，不動視窗', () async {
+    platform.failing.add('init');
+    await service.start(minimized: false);
+    expect(platform.calls, ['init']);
   });
 
   test('CloseAction.parse 不認得的值回 ask', () {
