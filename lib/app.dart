@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'pages/home_page.dart';
-import 'widgets/danser_setup_gate.dart';
 
 /// 全域 navigator，供沒有 BuildContext 的入口（例如 ShareLinkOpener）開啟頁面與對話框
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
@@ -20,7 +19,7 @@ class OsuBeatmapApp extends StatelessWidget {
           brightness: Brightness.dark,
         ),
       ),
-      home: const DanserSetupGate(child: HomePage()),
+      home: const HomePage(),
     );
   }
 }

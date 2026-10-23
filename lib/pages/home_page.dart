@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/auto_upload_service.dart';
+import '../widgets/danser_setup_gate.dart';
 import '../widgets/open_share_link_dialog.dart';
 import '../widgets/share_dialog.dart';
 import 'beatmap_list_page.dart';
@@ -16,7 +17,13 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int _selectedIndex = 0;
 
-  static const _pages = [BeatmapListPage(), ReplayListPage()];
+  /// 第一次切到「回放匯出」後才建立該頁，danser 的檢查與下載延後到那時
+  bool _replayOpened = false;
+
+  void _select(int i) => setState(() {
+    _selectedIndex = i;
+    if (i == 1) _replayOpened = true;
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +32,7 @@ class _HomePageState extends State<HomePage> {
         children: [
           NavigationRail(
             selectedIndex: _selectedIndex,
-            onDestinationSelected: (i) => setState(() => _selectedIndex = i),
+            onDestinationSelected: _select,
             labelType: NavigationRailLabelType.all,
             trailing: const Expanded(
               child: Align(
@@ -51,7 +58,16 @@ class _HomePageState extends State<HomePage> {
           ),
           const VerticalDivider(width: 1, thickness: 1),
           Expanded(
-            child: IndexedStack(index: _selectedIndex, children: _pages),
+            child: IndexedStack(
+              index: _selectedIndex,
+              children: [
+                const BeatmapListPage(),
+                if (_replayOpened)
+                  const DanserSetupGate(child: ReplayListPage())
+                else
+                  const SizedBox.shrink(),
+              ],
+            ),
           ),
         ],
       ),

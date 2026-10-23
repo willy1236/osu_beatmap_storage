@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/danser_service.dart';
 
-/// 應用程式啟動閘道：確保 danser-go 已就緒後才顯示主畫面。
+/// 回放匯出頁的閘道：確保 danser-go 已就緒後才顯示子頁面。
 ///
 /// 若執行檔不存在，會顯示「正在準備渲染引擎...」進度畫面並自動下載安裝。
 class DanserSetupGate extends StatefulWidget {
