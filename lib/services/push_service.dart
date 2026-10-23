@@ -154,6 +154,9 @@ class PushService extends ChangeNotifier {
   /// 最近一次讀取失敗的說明；成功後清掉
   String? get error => _error;
 
+  /// 目前在途的讀取（含合併進來的再讀一次）；沒有在讀取時為 null
+  Future<void>? get loadInFlight => _running;
+
   /// 重新讀取收件匣；讀取中再次呼叫時，等這次結束後再讀一次
   Future<void> refresh() {
     final running = _running;

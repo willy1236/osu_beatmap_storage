@@ -53,12 +53,14 @@ Map<String, dynamic> _push(String id, String from) => {
 /// 全部在 fake 時間裡跑，不依賴真實時間
 void main() {
   late List<_Conn> conns;
+  void Function()? disposeN; // 冪等，測試中途 dispose 後 teardown 不會重複
   late List<http.Request> calls;
   late List<dynamic> pushes;
   late Map<String, List<dynamic>> requests;
 
   /// 設定後，下一次對應列表的 GET 先取好當下的資料，等 gate 完成才回應
-  Completer<void>? pushGate;
+  /// 依序卡住接下來的收件匣 GET（每個 gate 對應一次 GET）
+  final pushGates = <Completer<void>>[];
   Completer<void>? requestsGate;
 
   setUp(() {
@@ -66,7 +68,7 @@ void main() {
     calls = [];
     pushes = [];
     requests = {'incoming': [], 'outgoing': []};
-    pushGate = null;
+    pushGates.clear();
     requestsGate = null;
   });
 
@@ -74,9 +76,7 @@ void main() {
     calls.add(r);
     if (r.method == 'GET' && r.url.path == '/osu/pushes') {
       final snapshot = jsonResp({'pushes': List.of(pushes)});
-      final g = pushGate;
-      pushGate = null;
-      if (g != null) await g.future;
+      if (pushGates.isNotEmpty) await pushGates.removeAt(0).future;
       return snapshot;
     }
     if (r.method == 'GET' && r.url.path == '/social/requests') {
@@ -169,11 +169,17 @@ void main() {
           detector: _Idle(),
           interval: const Duration(seconds: 30),
         );
+        var nDisposed = false;
+        disposeN = () {
+          if (nDisposed) return;
+          nDisposed = true;
+          n.dispose();
+        };
         settle(async);
         expect(conns, hasLength(1));
         body(async, f, p, n, toast);
         presence.dispose();
-        n.dispose();
+        disposeN!();
         p.dispose();
         f.dispose();
         rt.dispose();
@@ -213,15 +219,10 @@ void main() {
     expect(count('/osu/pushes'), pushesBefore + 1);
   });
 
-  fakeTest('重讀進行中收到 push：斷線期間的推送不發 toast，事件之後的新推送才發', (
-    async,
-    f,
-    p,
-    n,
-    toast,
-  ) {
+  fakeTest('重讀進行中收到 push：斷線期間的推送不發 toast，事件之後的新推送才發', (async, f, p, n, toast) {
     pushes = [_push('dis', '斷線時')]; // 斷線期間錯過的
-    final gate = pushGate = Completer<void>();
+    final gate = Completer<void>();
+    pushGates.add(gate);
     conns[0].end();
     async.elapse(const Duration(milliseconds: 50));
     expect(conns, hasLength(2));
@@ -269,5 +270,60 @@ void main() {
     expect(f.incoming, hasLength(2));
     expect(toast.titles, hasLength(1));
     expect(toast.titles.single, contains('新的'));
+  });
+
+  fakeTest('重連前已有讀取在途：重連的重讀合併進去，事件仍等整輪結束，斷線期間的推送不發 toast', (
+    async,
+    f,
+    p,
+    n,
+    toast,
+  ) {
+    final stale = Completer<void>(); // 重連前就卡住的讀取（舊回應：空）
+    final again = Completer<void>(); // 重連合併進來的那一輪再讀
+    pushGates.addAll([stale, again]);
+    unawaited(p.refresh());
+    async.flushMicrotasks();
+    expect(p.loading, isTrue);
+
+    pushes = [_push('dis', '斷線時')];
+    conns[0].end();
+    async.elapse(const Duration(milliseconds: 50));
+    expect(conns, hasLength(2));
+
+    conns[1].push('event: push\ndata: {}\n\n');
+    async.flushMicrotasks();
+
+    stale.complete(); // 舊那輪結束：不能就此放行事件
+    async.flushMicrotasks();
+    expect(toast.titles, isEmpty);
+    expect(p.items, isEmpty); // 舊回應是空的，再讀一輪還卡著
+
+    // 再讀一輪已取好資料（只有斷線期間的推送）；回應放行前伺服器又多了新的一筆
+    pushes = [_push('dis', '斷線時'), _push('new', '新的')];
+    again.complete();
+    settle(async);
+    expect(p.items.map((e) => e.id), containsAll(['dis', 'new']));
+    expect(toast.titles, hasLength(1));
+    expect(toast.titles.single, contains('新的'));
+  });
+
+  fakeTest('等待重讀的事件處理在 dispose 後不再重讀、不發 toast', (async, f, p, n, toast) {
+    final gate = Completer<void>();
+    pushGates.add(gate);
+    pushes = [_push('dis', '斷線時')];
+    conns[0].end();
+    async.elapse(const Duration(milliseconds: 50));
+    conns[1].push('event: push\ndata: {}\n\n');
+    async.flushMicrotasks();
+    final getsBefore = count('/osu/pushes');
+
+    disposeN!();
+    pushes = [_push('dis', '斷線時'), _push('new', '新的')];
+    gate.complete();
+    settle(async);
+    expect(toast.titles, isEmpty);
+    // 只有重連那一輪重讀，沒有事件處理在 dispose 後多讀
+    expect(count('/osu/pushes'), getsBefore);
   });
 }

@@ -211,6 +211,7 @@ void main() {
     expect(f.loaded, isTrue);
     expect(n.badgeCount, 0);
     // 新帳號收到同一個人的邀請、同 id 的推送：要再通知，不因舊帳號的記錄被吞掉
+    // （換帳號時兩個 Service 清空列表，已通知集合由 prune 隨之清掉，沒有另外的清空邏輯）
     be.requests = {
       'incoming': [peerJson(bId, '小明')],
       'outgoing': [],
