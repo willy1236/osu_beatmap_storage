@@ -141,6 +141,10 @@ class PushService extends ChangeNotifier {
   Future<void>? _running;
   bool _again = false;
 
+  /// 正在送 markRead 的 id，以及成功後等在途讀取結束前仍要保持已讀的 id：
+  /// 在途的 GET 可能是 markRead 之前發出的，回應不能把已讀蓋回未讀
+  final Set<String> _readHold = {};
+
   /// 新到舊
   List<PushItem> get items => _items;
   int get unreadCount => _items.where((p) => !p.read).length;
@@ -196,7 +200,10 @@ class PushService extends ChangeNotifier {
       // 讀取期間登出或換了帳號：結果不屬於目前的域民；換帳號時 _again 已設好，迴圈會再讀一次
       if (!_auth.isLoggedIn || _auth.sub != sub) continue;
       if (err == null) {
-        _items = items!;
+        _items = [
+          for (final p in items!)
+            _readHold.contains(p.id) && !p.read ? p.copyWith(read: true) : p,
+        ];
         _loaded = true;
         _error = null;
       } else {
@@ -204,6 +211,7 @@ class PushService extends ChangeNotifier {
       }
       notifyListeners();
     } while (_again);
+    _readHold.clear();
   }
 
   /// `POST /osu/pushes`。[entries] 的 OnlineID 須大於 0、張數與附言長度須在上限內
@@ -283,12 +291,21 @@ class PushService extends ChangeNotifier {
     final i = _items.indexWhere((p) => p.id == id);
     if (i < 0) return false;
     if (_items[i].read) return true;
+    _readHold.add(id);
     _setRead(id, true);
     final ok = await _simple(
       'POST',
       '/osu/pushes/${Uri.encodeComponent(id)}/read',
     );
-    if (!ok) _setRead(id, false);
+    if (!ok) {
+      _readHold.remove(id);
+      _setRead(id, false);
+    } else if (_running != null) {
+      // 在途的讀取可能早於這次標記：它結束後再讀一次，期間 [_readHold] 保持已讀
+      _again = true;
+    } else {
+      _readHold.remove(id);
+    }
     return ok;
   }
 
@@ -433,6 +450,7 @@ class PushService extends ChangeNotifier {
     _sub = sub;
     final had = _loaded || _items.isNotEmpty || _error != null;
     _items = const [];
+    _readHold.clear();
     _loaded = false;
     _error = null;
     if (had) notifyListeners();
