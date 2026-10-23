@@ -421,6 +421,70 @@ void main() {
       expect(store.value, isNull);
     });
 
+    test('撤銷等待期間 refresh 回 400：不閃成需要重新登入', () async {
+      await loggedIn();
+      now = now.add(const Duration(hours: 2));
+      final refreshGate = Completer<void>();
+      final revokeGate = Completer<void>();
+      final auth = build((req) async {
+        if (req.url.path.endsWith('/token')) {
+          await refreshGate.future;
+          return http.Response('{"error":"invalid_grant"}', 400);
+        }
+        await revokeGate.future;
+        return http.Response('', 200);
+      });
+      await auth.init();
+      final statuses = <AuthStatus>[];
+      auth.addListener(() => statuses.add(auth.status));
+      final pending = auth.accessToken();
+      final out = auth.logout();
+      await pumpEventQueue();
+      refreshGate.complete();
+      expect(await pending, isNull);
+      revokeGate.complete();
+      await out;
+      expect(statuses, isNot(contains(AuthStatus.reloginRequired)));
+      expect(auth.status, AuthStatus.loggedOut);
+    });
+
+    test('舊 session 的 refresh 先結束時，不清掉新 session 進行中的 refresh', () async {
+      await loggedIn();
+      now = now.add(const Duration(hours: 2));
+      final oldGate = Completer<void>();
+      final newGate = Completer<void>();
+      var tokenCalls = 0;
+      final auth = build(
+        (req) async {
+          if (req.url.path.endsWith('/token')) {
+            tokenCalls++;
+            if (tokenCalls == 1) {
+              await oldGate.future;
+              return http.Response(tokenBody(access: 'old-2'), 200);
+            }
+            if (tokenCalls == 2) return http.Response(tokenBody(), 200);
+            await newGate.future;
+            return http.Response(tokenBody(access: 'access-new'), 200);
+          }
+          return http.Response('', 200);
+        },
+        openBrowser: browser(
+          (u) => {'code': 'c', 'state': u.queryParameters['state']!},
+        ),
+      );
+      await auth.init();
+      final stale = auth.accessToken();
+      await auth.logout();
+      await auth.login();
+      final first = auth.refreshAccessToken();
+      oldGate.complete();
+      expect(await stale, isNull);
+      final second = auth.refreshAccessToken();
+      newGate.complete();
+      expect(await Future.wait([first, second]), ['access-new', 'access-new']);
+      expect(tokenCalls, 3);
+    });
+
     test('登出後重新登入：不沿用舊 session 進行中的 refresh', () async {
       await loggedIn();
       now = now.add(const Duration(hours: 2));
