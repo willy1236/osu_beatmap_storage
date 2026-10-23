@@ -57,11 +57,8 @@ class _FriendsPageState extends State<FriendsPage> {
   void initState() {
     super.initState();
     _intent.addListener(_onIntent);
-    // 單獨開啟好友頁時重讀；放在首幀之後，避免 build 期間通知其他 Listener。
-    // 在 HomePage 裡好友頁常駐，每次切到該頁的重讀由 HomePage 負責
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _auth.isLoggedIn) _service.refresh();
-    });
+    // 重讀由 HomePage 在每次切到好友頁時觸發（好友頁常駐，initState 只跑一次）；
+    // 登入後的第一次讀取由 FriendService 自己負責
   }
 
   @override
