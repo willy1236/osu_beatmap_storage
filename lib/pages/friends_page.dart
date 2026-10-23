@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
 import '../services/friend_service.dart';
+import '../widgets/add_friend_dialog.dart';
 import '../widgets/peer_avatar.dart';
 
 /// 好友頁：好友列表、收到的邀請（接受、拒絕）、送出的邀請（取消）。
@@ -52,6 +53,12 @@ class _FriendsPageState extends State<FriendsPage> {
           appBar: AppBar(
             title: const Text('好友'),
             actions: [
+              IconButton(
+                icon: const Icon(Icons.person_add_alt_1),
+                tooltip: '加好友',
+                onPressed: () =>
+                    showAddFriendDialog(context, service: _service),
+              ),
               IconButton(
                 icon: const Icon(Icons.refresh),
                 tooltip: '重新整理',
