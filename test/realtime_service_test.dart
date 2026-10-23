@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -47,6 +48,23 @@ class _Conn {
   String? get token => request.headers['Authorization'];
 }
 
+/// 測試用的 AuthService：sub／登入狀態由測試直接設定，用來走「不經登出直接換帳號」的路徑
+class _FakeAuth extends AuthService {
+  _FakeAuth(this._subValue);
+  String? _subValue;
+  @override
+  bool get isLoggedIn => _subValue != null;
+  @override
+  String? get sub => _subValue;
+  @override
+  Future<String?> accessToken() async =>
+      _subValue == null ? null : 'tok-$_subValue';
+  void switchTo(String? sub) {
+    _subValue = sub;
+    notifyListeners();
+  }
+}
+
 void main() {
   late _Store store;
   late _Prefs prefs;
@@ -60,21 +78,47 @@ void main() {
     statuses = [];
   });
 
-  AuthService makeAuth() => AuthService(
+  /// 全部在 fake 時間裡跑：不依賴真實時間，全套並行負載下也不會逾時
+  void fakeTest(String name, void Function(FakeAsync async) body) {
+    test(name, () => fakeAsync(body));
+  }
+
+  /// 在 fake 時間裡等一個 Future 完成
+  T await_<T>(FakeAsync async, Future<T> f) {
+    late T value;
+    var done = false;
+    Object? error;
+    f.then((v) {
+      value = v;
+      done = true;
+    }, onError: (Object e) => error = e);
+    async.flushMicrotasks();
+    if (error != null) throw error!;
+    expect(done, isTrue, reason: 'Future 沒有完成');
+    return value;
+  }
+
+  void settle(FakeAsync async) => async.elapse(const Duration(seconds: 1));
+
+  AuthService makeAuth({http.Client? client}) => AuthService(
     tokenStore: store,
     prefs: prefs,
-    httpClient: MockClient((_) async => http.Response('', 200)),
+    httpClient: client ?? MockClient((_) async => http.Response('', 200)),
   );
 
-  Future<AuthService> loggedIn([String sub = 'A']) async {
+  AuthService loggedIn(
+    FakeAsync async, [
+    String sub = 'A',
+    http.Client? client,
+  ]) {
     prefs.account = (sub: sub, username: 'u', picture: null);
     store.value = jsonEncode({
       'access': 'tok-$sub',
       'refresh': 'r',
       'expires_at': DateTime(2099).millisecondsSinceEpoch,
     });
-    final auth = makeAuth();
-    await auth.init();
+    final auth = makeAuth(client: client);
+    await_(async, auth.init());
     return auth;
   }
 
@@ -92,19 +136,16 @@ void main() {
     backoff: (_) => const Duration(milliseconds: 5),
   );
 
-  Future<void> settle() =>
-      Future<void>.delayed(const Duration(milliseconds: 60));
-
-  test('未登入：不連線', () async {
+  fakeTest('未登入：不連線', (async) {
     final r = make(makeAuth());
-    await settle();
+    settle(async);
     expect(conns, isEmpty);
     r.dispose();
   });
 
-  test('登入後連線，帶 Bearer token 與 SSE header', () async {
-    final r = make(await loggedIn());
-    await settle();
+  fakeTest('登入後連線，帶 Bearer token 與 SSE header', (async) {
+    final r = make(loggedIn(async));
+    settle(async);
     expect(conns, hasLength(1));
     expect(conns[0].request.url.toString(), 'https://api.test/social/events');
     expect(conns[0].token, 'Bearer tok-A');
@@ -112,139 +153,173 @@ void main() {
     r.dispose();
   });
 
-  test('事件依型別分派；忽略註解行、壞 JSON、未訂閱型別；可取消訂閱', () async {
-    final r = make(await loggedIn());
+  fakeTest('事件依型別分派；忽略註解行、壞 JSON、未訂閱型別；可取消訂閱', (async) {
+    final r = make(loggedIn(async));
     final got = <Map<String, dynamic>>[];
     final cancel = r.on('push', got.add);
     r.on('push', (_) => throw StateError('handler 壞掉不能影響別人'));
-    await settle();
+    settle(async);
     conns[0].push(': connected\n\n');
     conns[0].push('event: push\ndata: {"id":"1",');
     conns[0].push('"message":"嗨"}\n\n');
     conns[0].push(': ping\n\nevent: push\ndata: not json\n\n');
     conns[0].push('event: other\ndata: {"x":1}\n\n');
-    await settle();
+    settle(async);
     expect(got, [
       {'id': '1', 'message': '嗨'},
     ]);
     cancel();
     conns[0].push('event: push\ndata: {"id":"2"}\n\n');
-    await settle();
+    settle(async);
     expect(got, hasLength(1));
     r.dispose();
   });
 
-  test('串流結束後重連並發出 resync；第一次連線不發', () async {
-    final r = make(await loggedIn());
+  fakeTest('串流結束後重連並發出 resync；第一次連線不發', (async) {
+    final r = make(loggedIn(async));
     var resyncs = 0;
     r.resyncRequested.addListener(() => resyncs++);
-    await settle();
+    settle(async);
     expect(conns, hasLength(1));
     expect(resyncs, 0);
-    await conns[0].end();
-    await settle();
+    conns[0].end();
+    settle(async);
     expect(conns, hasLength(2));
     expect(resyncs, 1);
     r.dispose();
   });
 
-  test('連線失敗（5xx）退避重試，成功後才發 resync 且前一次失敗不發', () async {
+  fakeTest('連線失敗（5xx）退避重試，成功後才發 resync 且前一次失敗不發', (async) {
     statuses = [200, 503, 200];
-    final r = make(await loggedIn());
+    final r = make(loggedIn(async));
     var resyncs = 0;
     r.resyncRequested.addListener(() => resyncs++);
-    await settle();
-    await conns[0].end();
-    await settle();
+    settle(async);
+    conns[0].end();
+    settle(async);
     expect(conns.length, 3);
     expect(resyncs, 1);
     r.dispose();
   });
 
-  test('401：refresh 後用新 token 重連，不轉成需要重新登入', () async {
+  fakeTest('401：refresh 後用新 token 重連，不轉成需要重新登入', (async) {
     statuses = [401];
-    final tokens = <String>[];
-    final auth = await loggedIn();
-    final r = RealtimeService(
-      auth: auth,
-      clientFactory: () => MockClient.streaming((req, _) async {
-        tokens.add(req.headers['Authorization']!);
-        final c = _Conn(req, tokens.length == 1 ? 401 : 200);
-        conns.add(c);
-        return http.StreamedResponse(c.body.stream, c.status);
+    var refreshCalls = 0;
+    final auth = loggedIn(
+      async,
+      'A',
+      MockClient((req) async {
+        refreshCalls++;
+        return http.Response(
+          jsonEncode({
+            'access_token': 'tok-new',
+            'refresh_token': 'r2',
+            'expires_in': 3600,
+          }),
+          200,
+        );
       }),
-      baseUrl: 'https://api.test',
-      backoff: (_) => const Duration(milliseconds: 5),
     );
-    await settle();
-    expect(conns.length, greaterThanOrEqualTo(2));
+    final r = make(auth);
+    settle(async);
+    expect(refreshCalls, 1);
+    expect(conns, hasLength(2));
+    expect(conns[0].token, 'Bearer tok-A');
+    expect(conns[1].token, 'Bearer tok-new');
     expect(auth.isLoggedIn, isTrue);
     r.dispose();
   });
 
-  test('登出後斷開；換帳號後連到新帳號', () async {
-    final auth = await loggedIn('A');
+  fakeTest('登出後斷開', (async) {
+    final auth = loggedIn(async, 'A');
     final r = make(auth);
-    await settle();
+    settle(async);
+    expect(conns, hasLength(1));
     expect(conns[0].token, 'Bearer tok-A');
-    await auth.logout();
-    await settle();
-    final afterLogout = conns.length;
-    expect(afterLogout, 1);
+    await_(async, auth.logout());
+    settle(async);
+    expect(conns, hasLength(1));
+    expect(r.isConnected, isFalse);
     r.dispose();
-
-    // 換帳號：另一個 sub 登入後，新連線帶新 token
-    final auth2 = await loggedIn('B');
-    final r2 = make(auth2);
-    await settle();
-    expect(conns.last.token, 'Bearer tok-B');
-    r2.dispose();
   });
 
-  test('閒置逾時（沒收到任何資料）後強制重連', () async {
-    final r = make(await loggedIn(), idle: const Duration(milliseconds: 30));
-    await Future<void>.delayed(const Duration(milliseconds: 120));
+  fakeTest('同一個實例換帳號：舊連線的事件不再分派，新連線帶新帳號 token', (async) {
+    final auth = _FakeAuth('A');
+    final r = make(auth);
+    final got = <String>[];
+    r.on('push', (d) => got.add(d['id'] as String));
+    settle(async);
+    expect(conns, hasLength(1));
+    expect(conns[0].token, 'Bearer tok-A');
+
+    // 不經登出直接換成 B
+    auth.switchTo('B');
+    settle(async);
+    expect(conns, hasLength(2));
+    expect(conns[1].token, 'Bearer tok-B');
+    expect(r.isConnected, isTrue);
+
+    conns[0].push('event: push\ndata: {"id":"old"}\n\n');
+    conns[1].push('event: push\ndata: {"id":"new"}\n\n');
+    settle(async);
+    expect(got, ['new']);
+
+    // 登出後斷開，不再連線
+    auth.switchTo(null);
+    settle(async);
+    expect(r.isConnected, isFalse);
+    expect(conns, hasLength(2));
+    r.dispose();
+  });
+
+  fakeTest('閒置逾時（沒收到任何資料）後強制重連', (async) {
+    final r = make(loggedIn(async), idle: const Duration(seconds: 90));
+    settle(async);
+    expect(conns, hasLength(1));
+    async.elapse(const Duration(seconds: 85));
+    expect(conns, hasLength(1));
+    async.elapse(const Duration(seconds: 10));
     expect(conns.length, greaterThanOrEqualTo(2));
     r.dispose();
   });
 
-  test('心跳註解行會重置閒置計時', () async {
-    final r = make(await loggedIn(), idle: const Duration(milliseconds: 80));
-    await settle();
+  fakeTest('心跳註解行會重置閒置計時', (async) {
+    final r = make(loggedIn(async), idle: const Duration(seconds: 90));
+    settle(async);
     for (var i = 0; i < 4; i++) {
       conns[0].push(': ping\n\n');
-      await Future<void>.delayed(const Duration(milliseconds: 40));
+      async.elapse(const Duration(seconds: 60));
     }
     expect(conns, hasLength(1));
     r.dispose();
   });
 
-  test('connected：每次連上都通知（含第一次），斷線不通知，isConnected 跟著變', () async {
-    final r = make(await loggedIn());
+  fakeTest('connected：每次連上都通知（含第一次），斷線不通知，isConnected 跟著變', (async) {
+    final r = make(loggedIn(async));
     var n = 0;
     r.connected.addListener(() => n++);
-    await settle();
+    settle(async);
     expect(n, 1);
     expect(r.isConnected, isTrue);
-    await conns[0].end();
-    await settle();
+    conns[0].end();
+    settle(async);
     expect(conns.length, greaterThanOrEqualTo(2));
     expect(n, 2);
     expect(r.isConnected, isTrue);
     r.dispose();
   });
 
-  test('connected：401 不算連上；登出後 isConnected 為 false', () async {
+  fakeTest('connected：401 不算連上；登出後 isConnected 為 false', (async) {
     statuses = [401];
-    final auth = await loggedIn();
+    final auth = loggedIn(async);
     final r = make(auth);
     var n = 0;
     r.connected.addListener(() => n++);
-    await settle();
+    settle(async);
     expect(n, 1); // 第一次 401，重試後才連上
     expect(r.isConnected, isTrue);
-    await auth.logout();
-    await settle();
+    await_(async, auth.logout());
+    settle(async);
     expect(r.isConnected, isFalse);
     r.dispose();
   });
