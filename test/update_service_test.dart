@@ -110,6 +110,14 @@ void _applyScriptTests() {
     });
   });
 
+  test('先取得舊程式 Handle 才寫 started 標記', () {
+    final src = UpdateService.applyScriptSource;
+    final handle = src.indexOf('[void]\$proc.Handle');
+    final flag = src.indexOf(r'Set-Content -LiteralPath $Started');
+    expect(handle, greaterThan(0));
+    expect(flag, greaterThan(handle));
+  });
+
   test('更新腳本必須是純 ASCII', () {
     final bad = UpdateService.applyScriptSource.codeUnits.where((c) => c > 127);
     expect(bad, isEmpty);
@@ -155,7 +163,11 @@ void _applyScriptTests() {
             const Duration(milliseconds: 50),
             () => flag.writeAsStringSync('started'),
           );
-          return await Process.start('cmd', ['/c', 'exit']);
+          return await Process.start('powershell', [
+            '-NoProfile',
+            '-Command',
+            'Start-Sleep 3',
+          ]);
         },
         started: flag,
         timeout: const Duration(seconds: 5),
@@ -172,6 +184,34 @@ void _applyScriptTests() {
         interval: const Duration(milliseconds: 10),
       );
       expect(ok, isFalse);
+    }, skip: !Platform.isWindows);
+
+    test('腳本在寫標記前就結束：立即回傳 false，不等逾時', () async {
+      final sw = Stopwatch()..start();
+      final ok = await UpdateService.launchApplyScript(
+        start: () => Process.start('cmd', ['/c', 'exit']),
+        started: File('${dir.path}/started.flag'),
+        timeout: const Duration(seconds: 20),
+        interval: const Duration(milliseconds: 10),
+      );
+      expect(ok, isFalse);
+      expect(sw.elapsed, lessThan(const Duration(seconds: 10)));
+    }, skip: !Platform.isWindows);
+
+    test('逾時會寫 cancel 標記', () async {
+      final flag = File('${dir.path}/started.flag');
+      final ok = await UpdateService.launchApplyScript(
+        start: () => Process.start('powershell', [
+          '-NoProfile',
+          '-Command',
+          'Start-Sleep 5',
+        ]),
+        started: flag,
+        timeout: const Duration(milliseconds: 200),
+        interval: const Duration(milliseconds: 10),
+      );
+      expect(ok, isFalse);
+      expect(File('${flag.path}.cancel').existsSync(), isTrue);
     }, skip: !Platform.isWindows);
 
     test('啟動丟例外回傳 false', () async {
@@ -217,9 +257,13 @@ void _applyScriptTests() {
           '${Platform.environment['SystemRoot']}/System32/hostname.exe',
         ).copySync('${source.path}/run.exe');
       }
-      File(
-        '${root.path}/apply.ps1',
-      ).writeAsStringSync(UpdateService.applyScriptSource);
+      // 與正式路徑一致：UTF-8 BOM + 腳本內容
+      File('${root.path}/apply.ps1').writeAsBytesSync([
+        0xEF,
+        0xBB,
+        0xBF,
+        ...utf8.encode(UpdateService.applyScriptSource),
+      ]);
       return (
         source: source,
         target: target,
@@ -401,7 +445,50 @@ void _applyScriptTests() {
       expect(File('$t/new.dll').existsSync(), isFalse);
       expect(File('$t/run.cmd').existsSync(), isTrue);
       expect(Directory('$t/.update_backup').existsSync(), isFalse);
+      expect(Directory('$t/.update_staging').existsSync(), isFalse);
       expect(File('$t/update_error.log').existsSync(), isTrue);
+    });
+
+    test('rename 階段失敗：新檔退回、舊檔還原，Target 與更新前一致', () async {
+      final c = await setup('placefail');
+      final t = c.target.path;
+      File('${c.source.path}/a_new.dll').writeAsStringSync('a-new');
+      // Target 有名為 new.dll 的資料夾，新檔 rename 進來時會失敗；a_new.dll 已先放入，需退回
+      Directory('$t/new.dll').createSync();
+      File('$t/new.dll/keep.txt').writeAsStringSync('keep');
+      await finish(c);
+      expect(File('$t/old.dll').readAsStringSync(), 'old');
+      expect(File('$t/a_new.dll').existsSync(), isFalse);
+      expect(File('$t/new.dll/keep.txt').readAsStringSync(), 'keep');
+      expect(Directory('$t/.update_backup').existsSync(), isFalse);
+      expect(Directory('$t/.update_staging').existsSync(), isFalse);
+      expect(File('$t/update_error.log').existsSync(), isTrue);
+    });
+
+    test('只有精確 .dll 副檔名才算程式檔（.dllx、.dll_bak 不備份不刪除）', () async {
+      final c = await setup('dllext');
+      final t = c.target.path;
+      File('$t/x.dllx').writeAsStringSync('x');
+      File('$t/y.dll_bak').writeAsStringSync('y');
+      await finish(c);
+      expect(File('$t/x.dllx').readAsStringSync(), 'x');
+      expect(File('$t/y.dll_bak').readAsStringSync(), 'y');
+      expect(File('$t/old.dll').existsSync(), isFalse);
+      expect(File('$t/new.dll').existsSync(), isTrue);
+    });
+
+    test('收到 cancel 標記：不換檔、不重啟', () async {
+      final c = await setup('cancel');
+      File('${c.started.path}.cancel').writeAsStringSync('cancel');
+      expect(await run(c, appPid: await deadPid()), isTrue);
+      final t = c.target.path;
+      final log = File('$t/update_error.log');
+      await until(log.existsSync);
+      await Future<void>.delayed(const Duration(seconds: 2));
+      expect(log.readAsStringSync(), contains('cancel'));
+      expect(File('$t/old.dll').existsSync(), isTrue);
+      expect(File('$t/new.dll').existsSync(), isFalse);
+      expect(File('$t/ran.txt').existsSync(), isFalse);
     });
 
     test('合併複製其他項目失敗：只記 log，新程式檔保留並重啟', () async {
