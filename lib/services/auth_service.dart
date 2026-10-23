@@ -50,20 +50,20 @@ class SecureAuthTokenStore implements AuthTokenStore {
 
 /// 帳號資訊與「剛登出過」旗標的存放處（正式環境為 config.json）
 abstract interface class AuthPrefs {
-  Future<({String sub, String username})?> getAccount();
-  Future<void> setAccount(String? sub, String? username);
+  Future<({String sub, String username, String? picture})?> getAccount();
+  Future<void> setAccount(String? sub, String? username, {String? picture});
   Future<bool> getForceLogin();
   Future<void> setForceLogin(bool value);
 }
 
 class _ConfigAuthPrefs implements AuthPrefs {
   @override
-  Future<({String sub, String username})?> getAccount() =>
+  Future<({String sub, String username, String? picture})?> getAccount() =>
       PrefsService.getAuthAccount();
 
   @override
-  Future<void> setAccount(String? sub, String? username) =>
-      PrefsService.setAuthAccount(sub, username);
+  Future<void> setAccount(String? sub, String? username, {String? picture}) =>
+      PrefsService.setAuthAccount(sub, username, picture: picture);
 
   @override
   Future<bool> getForceLogin() => PrefsService.getAuthForceLogin();
@@ -140,6 +140,7 @@ class AuthService extends ChangeNotifier {
   AuthStatus _status = AuthStatus.loggedOut;
   String? _sub;
   String? _username;
+  String? _picture;
   String? _lastError;
   _Tokens? _tokens;
   Completer<Map<String, String>?>? _callback;
@@ -151,6 +152,9 @@ class AuthService extends ChangeNotifier {
   bool get isLoggedIn => _status == AuthStatus.loggedIn;
   String? get sub => _sub;
   String? get username => _username;
+
+  /// 頭像網址（id_token 的 picture claim）；沒有或舊登入尚未帶到時為 null
+  String? get picture => _picture;
 
   /// 最近一次登入失敗的原因，供狀態區顯示；下次登入開始時清除
   String? get lastError => _lastError;
@@ -185,11 +189,13 @@ class AuthService extends ChangeNotifier {
       _tokens = tokens;
       _sub = account.sub;
       _username = account.username;
+      _picture = account.picture;
       _setStatus(AuthStatus.loggedIn);
     } catch (_) {
       _tokens = null;
       _sub = null;
       _username = null;
+      _picture = null;
       return;
     }
     // access token 已過期時，在背景確認 refresh token 還有效（失效時轉成「需要重新登入」）
@@ -393,13 +399,18 @@ class AuthService extends ChangeNotifier {
       final claims = _jwtPayload(m['id_token'] as String);
       final sub = claims['sub'] as String;
       final username = (claims['preferred_username'] as String?) ?? sub;
+      final rawPicture = claims['picture'];
+      final picture = (rawPicture is String && rawPicture.isNotEmpty)
+          ? rawPicture
+          : null;
 
       await _store.write(tokens.encode());
-      await _prefs.setAccount(sub, username);
+      await _prefs.setAccount(sub, username, picture: picture);
       await _prefs.setForceLogin(false);
       _tokens = tokens;
       _sub = sub;
       _username = username;
+      _picture = picture;
       _setStatus(AuthStatus.loggedIn);
     } on TimeoutException {
       _lastError = '登入逾時，請重試';
@@ -454,6 +465,7 @@ class AuthService extends ChangeNotifier {
     _tokens = null;
     _sub = null;
     _username = null;
+    _picture = null;
     try {
       await _store.delete();
       await _prefs.setAccount(null, null);

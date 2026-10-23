@@ -16,12 +16,18 @@ class MemStore implements AuthTokenStore {
 }
 
 class MemPrefs implements AuthPrefs {
-  ({String sub, String username})? account;
+  ({String sub, String username, String? picture})? account;
   @override
-  Future<({String sub, String username})?> getAccount() async => account;
+  Future<({String sub, String username, String? picture})?>
+  getAccount() async => account;
   @override
-  Future<void> setAccount(String? sub, String? username) async =>
-      account = sub == null ? null : (sub: sub, username: username ?? '');
+  Future<void> setAccount(
+    String? sub,
+    String? username, {
+    String? picture,
+  }) async => account = sub == null
+      ? null
+      : (sub: sub, username: username ?? '', picture: picture);
   @override
   Future<bool> getForceLogin() async => false;
   @override
@@ -37,7 +43,7 @@ AuthService makeAuth({bool loggedIn = true}) {
   final s = MemStore();
   final p = MemPrefs();
   if (loggedIn) {
-    p.account = (sub: meId, username: 'me');
+    p.account = (sub: meId, username: 'me', picture: null);
     s.value = jsonEncode({
       'access': 'a',
       'refresh': 'r',

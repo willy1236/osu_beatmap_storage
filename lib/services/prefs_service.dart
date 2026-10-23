@@ -84,22 +84,39 @@ abstract final class PrefsService {
   }
 
   /// 目前登入的析域帳號（sub 與域民代號），token 另存在安全儲存
-  static Future<({String sub, String username})?> getAuthAccount() async {
+  static Future<({String sub, String username, String? picture})?>
+  getAuthAccount() async {
     final data = await _read();
     final sub = data['auth_sub'] as String?;
     if (sub == null || sub.isEmpty) return null;
-    return (sub: sub, username: (data['auth_username'] as String?) ?? '');
+    final pic = data['auth_picture'];
+    return (
+      sub: sub,
+      username: (data['auth_username'] as String?) ?? '',
+      // 舊版 config 沒有此欄位
+      picture: (pic is String && pic.isNotEmpty) ? pic : null,
+    );
   }
 
   /// 傳入 null 代表清除（登出或登入失效）
-  static Future<void> setAuthAccount(String? sub, String? username) async {
+  static Future<void> setAuthAccount(
+    String? sub,
+    String? username, {
+    String? picture,
+  }) async {
     final data = await _read();
     if (sub == null) {
       data.remove('auth_sub');
       data.remove('auth_username');
+      data.remove('auth_picture');
     } else {
       data['auth_sub'] = sub;
       data['auth_username'] = username ?? '';
+      if (picture == null || picture.isEmpty) {
+        data.remove('auth_picture');
+      } else {
+        data['auth_picture'] = picture;
+      }
     }
     await _write(data);
   }
