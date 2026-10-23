@@ -75,9 +75,7 @@ class _AddFriendDialogState extends State<AddFriendDialog> {
       });
       return;
     }
-    final text = r.status == FriendActionStatus.friends
-        ? '你們已成為好友'
-        : '已送出好友邀請';
+    final text = r.status == FriendActionStatus.friends ? '你們已成為好友' : '已送出好友邀請';
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(text)));
