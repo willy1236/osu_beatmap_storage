@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../constants.dart';
 import '../models/osu_realm_models.dart';
 import 'beatmap_detail_sheet.dart';
+import 'cloud_presence_badge.dart';
 import 'download_button.dart';
 import 'mode_icon.dart';
 
@@ -43,6 +44,7 @@ class BeatmapSetTile extends StatelessWidget {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            CloudPresenceBadge(onlineID: set.onlineID),
             if (stars.isNotEmpty)
               Column(
                 mainAxisAlignment: MainAxisAlignment.center,

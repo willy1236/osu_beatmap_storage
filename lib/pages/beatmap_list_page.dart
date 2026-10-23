@@ -10,6 +10,7 @@ import '../models/osu_realm_models.dart';
 import '../services/auth_service.dart';
 import '../services/auto_upload_service.dart';
 import '../services/cloud_list_service.dart';
+import '../services/cloud_presence_service.dart';
 import '../services/cloud_sync_service.dart';
 import '../services/download_service.dart';
 import '../services/local_library_service.dart';
@@ -84,6 +85,8 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
       final sets =
           realm.all<BeatmapSetInfo>().where((s) => !s.deletePending).toList()
             ..sort((a, b) => b.dateAdded.compareTo(a.dateAdded));
+      // 不等待：順便更新每列的「已在雲端」標示（未登入時不做事）
+      CloudPresenceService.instance.refresh();
       LocalLibraryService.instance.setOnlineIds({
         for (final s in sets)
           if (s.onlineID > 0) s.onlineID,
@@ -219,6 +222,7 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
       for (final s in _beatmapSets)
         if (s.onlineID > 0) s.onlineID,
     };
+    // 雲端清單頁可能刪除了紀錄，回來時重讀「已在雲端」標示
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -231,7 +235,7 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
           onClear: CloudListService.instance.clearAll,
         ),
       ),
-    );
+    ).then((_) => CloudPresenceService.instance.refresh());
   }
 
   /// AppBar 下方的雲端上傳狀態：上傳中顯示細進度條，失敗時顯示一行說明
