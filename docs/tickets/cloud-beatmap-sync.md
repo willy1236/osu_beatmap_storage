@@ -60,11 +60,7 @@ flowchart LR
 
 並行組 A 都會在 `BeatmapListPage` 的 AppBar 或帳號選單加入口，屬於同檔不同段落，git 可自動合併，不另抽共用卡。
 
-**審查狀態**：T-01～T-08（含 T-08a、T-08b）已經獨立 agent 審查（2026-10-23，範圍 `main..8df87e0`），修正 1 條 blocking 與使用者選定的 5 條 non-blocking 後，修正的 diff（`8df87e0..908a9b8`）再經兩輪獨立審查，沒有 blocking；完整 CI 為 `flutter analyze`（本次變更無新問題）、139 個測試全過。審查留下的 non-blocking 待使用者決定是否處理：
-- 雲端清單頁任何篩選變化都清空勾選，放寬篩選也清；這項修正沒有 widget test
-- `logout()` 等待 revoke 期間回來的 refresh 結果仍會套用，rotate 出的新 refresh token 不會被 revoke，狀態可能短暫閃成「需要重新登入」
-- 登出後快速重新登入時，`_refreshing` 可能還掛著舊 session 的 refresh，新 session 第一次 401 不會重試
-- 分享對話框在未登入（unauthorized）時也顯示「重試」
+**審查狀態**：T-01～T-08（含 T-08a、T-08b）已經獨立 agent 審查（2026-10-23，範圍 `main..8df87e0`），修正 1 條 blocking 與使用者選定的 non-blocking 後，修正的 diff（`8df87e0..09bc211`）再經三輪獨立審查，沒有 blocking，審查提出的 non-blocking 都已處理；完整 CI 為 `flutter analyze`（本次變更無新問題）、全部測試通過。
 
 ## 任務卡
 
@@ -109,7 +105,7 @@ flowchart LR
 - 登出要不要同時呼叫 Hydra 的 end session，由實作者決定
 
 **進度**：實作完成（2026-10-23）
-- commit：`89acea2`、`447f4bc`、`bf8bd79`、`ee77dcd`；審查修正 `8b783b1`（refresh 途中已登出或換 token 時捨棄結果）
+- commit：`89acea2`、`447f4bc`、`bf8bd79`、`ee77dcd`；審查修正 `8b783b1`（refresh 途中已登出或換 token 時捨棄結果）、`dd3d9ce`（登出時先讓 token 失效並撤銷 refresh 換發的新 refresh token；進行中的 refresh 綁定所屬 session，登出再登入不沿用）
 - 審查：已經獨立 agent 審查，見〈實作順序總覽〉的「審查狀態」
 - 未驗（待手動驗證）：沒登入時圖譜查看、CSV、下載、回放匯出照常可用；登出後再登入實際選另一個域民；refresh token 失效時狀態區顯示「需要重新登入」的文字
 - 實作決定
@@ -217,7 +213,7 @@ flowchart LR
 **依賴**：T-03、後端 T-04
 
 **進度**：實作完成（2026-10-23）
-- commit：`66835fb`、`8d7aa76`；審查修正 `b6ce261`（改變搜尋或篩選時清掉勾選，避免刪到看不見的項目）
+- commit：`66835fb`、`8d7aa76`；審查修正 `b6ce261`、`442d05b`（改變搜尋或篩選時移除被藏起來的勾選，避免刪到看不見的項目，仍看得到的勾選保留）
 - 審查：已經獨立 agent 審查，見〈實作順序總覽〉的「審查狀態」
 - 未驗（待手動驗證）：刪除後分享連結看到的清單同步變少（端到端，需真實後端）
 - 實作決定
@@ -320,7 +316,7 @@ flowchart LR
 **依賴**：T-02、後端 T-07
 
 **進度**：實作完成（2026-10-23）
-- commit：`791c7fc`、`d78611a`；審查修正 `3eab608`（第一次讀取失敗時只提供重試，不提供產生連結，以免繞過重新產生的確認）
+- commit：`791c7fc`、`d78611a`；審查修正 `3eab608`、`09bc211`（第一次讀取失敗時只提供重試，不提供產生連結，以免繞過重新產生的確認；未登入時重試也不顯示）
 - 審查：已經獨立 agent 審查，見〈實作順序總覽〉的「審查狀態」
 - 未驗（待手動驗證）：選單與對話框的實際外觀；複製後貼到別處；長代號在 NavigationRail 內被截斷
 - 實作決定
