@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -148,6 +149,59 @@ void main() {
   test('讀取中再呼叫：結束後只再讀一次', () async {
     final p = make(await loggedIn());
     await Future.wait([p.refresh(), p.refresh(), p.refresh()]);
+    await pumpEventQueue();
+    expect(fetches, 2);
+  });
+
+  test('讀取中登出再換帳號登入：捨棄舊結果並讀新帳號', () async {
+    final gate = Completer<void>();
+    var calls = 0;
+    final auth = await loggedIn();
+    final p = CloudPresenceService(
+      auth: auth,
+      sync: makeSync(),
+      fetch: () async {
+        calls++;
+        if (calls == 1) {
+          await gate.future;
+          return ok([1]);
+        }
+        return ok([2]);
+      },
+    );
+    await pumpEventQueue();
+    await auth.logout();
+    prefs.account = (sub: 'B', username: 'b');
+    store.value = jsonEncode({
+      'access': 'b',
+      'refresh': 'rb',
+      'expires_at': DateTime(2099).millisecondsSinceEpoch,
+    });
+    // 以還原登入的方式切成 B（不經瀏覽器）
+    await auth.init();
+    gate.complete();
+    await pumpEventQueue();
+    expect(calls, 2);
+    expect(p.loaded, isTrue);
+    expect(p.contains(1), isFalse);
+    expect(p.contains(2), isTrue);
+  });
+
+  test('上傳失敗也重讀（前面的批次可能已寫入）', () async {
+    final sync = CloudSyncService(
+      api: ApiClient(
+        httpClient: MockClient((_) async => http.Response('', 500)),
+        tokenProvider: () async => 'tok',
+        refreshToken: (_) async => null,
+        onUnauthorized: () async {},
+        baseUrl: 'https://api.test',
+      ),
+    );
+    make(await loggedIn(), sync);
+    await pumpEventQueue();
+    await sync.upload([
+      CloudEntry(onlineId: 3, dateAdded: DateTime.utc(2024)),
+    ], trigger: 'manual');
     await pumpEventQueue();
     expect(fetches, 2);
   });

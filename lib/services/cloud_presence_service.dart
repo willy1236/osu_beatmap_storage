@@ -7,8 +7,9 @@ import 'cloud_sync_service.dart';
 /// 雲端清單上有哪些 OnlineID（供圖譜查看頁標示「已在雲端」）。
 ///
 /// - 登入後自動讀取，登出或換帳號時清掉
-/// - 上傳（手動、自動、CSV）成功後自動重讀
+/// - 上傳（手動、自動、CSV）結束後自動重讀；中途失敗時前面的批次可能已寫入，所以不論結果都重讀
 /// - 其他會改變雲端清單的動作（刪除、複製別人的清單）由呼叫端呼叫 [refresh]
+/// - 盡早建立 [instance]（`main()`），登入還原後就會讀取，不必另外呼叫 [refresh]
 /// - 讀取失敗時保留上一次的結果
 class CloudPresenceService extends ChangeNotifier {
   CloudPresenceService({
@@ -20,6 +21,7 @@ class CloudPresenceService extends ChangeNotifier {
        _fetch = fetch ?? CloudListService.instance.fetchMine {
     _auth.addListener(_onAuthChanged);
     _sync.addListener(_onSyncChanged);
+    _wasUploading = _sync.uploading;
     _onAuthChanged();
   }
 
@@ -57,8 +59,8 @@ class CloudPresenceService extends ChangeNotifier {
       if (!_auth.isLoggedIn) return;
       final sub = _auth.sub;
       final r = await _fetch();
-      // 讀取期間登出或換了帳號：結果不屬於目前的域民
-      if (!_auth.isLoggedIn || _auth.sub != sub) return;
+      // 讀取期間登出或換了帳號：結果不屬於目前的域民；換了帳號時 _again 已設好，迴圈會再讀一次
+      if (!_auth.isLoggedIn || _auth.sub != sub) continue;
       if (r.ok) {
         _ids = {for (final e in r.entries) e.onlineId};
         notifyListeners();
@@ -81,7 +83,7 @@ class CloudPresenceService extends ChangeNotifier {
     final uploading = _sync.uploading;
     final finished = _wasUploading && !uploading;
     _wasUploading = uploading;
-    if (finished && _sync.lastResult?.ok == true) refresh();
+    if (finished) refresh();
   }
 
   @override
