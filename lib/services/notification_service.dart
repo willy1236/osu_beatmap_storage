@@ -52,8 +52,9 @@ class NotificationService extends ChangeNotifier {
     }
     _sub = _auth.isLoggedIn ? _auth.sub : null;
     _auth.addListener(_onAuthChanged);
-    _friends.addListener(_pruneNotified);
-    _push.addListener(_pruneNotified);
+    _friends.addListener(_onFriendsChanged);
+    _push.addListener(_onPushChanged);
+    _realtime.resyncRequested.addListener(_onResync);
   }
 
   static final NotificationService instance = NotificationService();
@@ -75,6 +76,12 @@ class NotificationService extends ChangeNotifier {
   final Set<String> _notifiedPushes = {};
   String? _sub;
 
+  /// 重連後的整份重讀（[FriendService]、[PushService] 自己做）進行中的標記。
+  /// 事件處理要先等它結束，才能取基準：斷線期間錯過的項目屬於重讀，不發通知，
+  /// 只有事件之後才出現的項目才發
+  final _ResyncGate _friendsResync = _ResyncGate();
+  final _ResyncGate _pushResync = _ResyncGate();
+
   /// 點通知後要切到的畫面；消費者處理完設回 null
   final ValueNotifier<NotificationTarget?> intent = ValueNotifier(null);
 
@@ -88,18 +95,32 @@ class NotificationService extends ChangeNotifier {
     _sub = sub;
     _notifiedInvites.clear();
     _notifiedPushes.clear();
+    _friendsResync.finish();
+    _pushResync.finish();
   }
 
-  void _pruneNotified() {
+  void _onResync() {
+    if (!_auth.isLoggedIn) return;
+    _friendsResync.arm(_friends.loading);
+    _pushResync.arm(_push.loading);
+  }
+
+  void _onFriendsChanged() {
     _notifiedInvites.retainAll(
       _friends.incoming.map((p) => p.accountId.toLowerCase()),
     );
+    _friendsResync.update(_friends.loading);
+  }
+
+  void _onPushChanged() {
     _notifiedPushes.retainAll(_push.items.map((p) => p.id));
+    _pushResync.update(_push.loading);
   }
 
   Future<void> onFriendAdded() => _friends.refresh();
 
   Future<void> onFriendRequest() async {
+    await _friendsResync.pending;
     final baseline = _friends.loaded
         ? _friends.incoming.map((p) => p.accountId.toLowerCase()).toSet()
         : null;
@@ -119,6 +140,7 @@ class NotificationService extends ChangeNotifier {
   }
 
   Future<void> onPush() async {
+    await _pushResync.pending;
     final baseline = _push.loaded ? _push.items.map((p) => p.id).toSet() : null;
     await _push.refresh();
     if (baseline == null || !_auth.isLoggedIn) return;
@@ -165,9 +187,42 @@ class NotificationService extends ChangeNotifier {
       l.removeListener(notifyListeners);
     }
     _auth.removeListener(_onAuthChanged);
-    _friends.removeListener(_pruneNotified);
-    _push.removeListener(_pruneNotified);
+    _friends.removeListener(_onFriendsChanged);
+    _push.removeListener(_onPushChanged);
+    _realtime.resyncRequested.removeListener(_onResync);
+    _friendsResync.finish();
+    _pushResync.finish();
     intent.dispose();
     super.dispose();
+  }
+}
+
+/// 追蹤一次「重連整份重讀」從開始到結束：[arm] 後 [pending] 不為 null，
+/// 直到服務經歷「讀取中 → 讀取結束」才 [finish]
+class _ResyncGate {
+  Completer<void>? _done;
+  bool _sawLoading = false;
+
+  Future<void>? get pending => _done?.future;
+
+  void arm(bool loading) {
+    _done ??= Completer<void>();
+    _sawLoading = _sawLoading || loading;
+  }
+
+  void update(bool loading) {
+    if (_done == null) return;
+    if (loading) {
+      _sawLoading = true;
+    } else if (_sawLoading) {
+      finish();
+    }
+  }
+
+  void finish() {
+    final d = _done;
+    _done = null;
+    _sawLoading = false;
+    if (d != null && !d.isCompleted) d.complete();
   }
 }
