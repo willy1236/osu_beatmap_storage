@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
 import '../services/friend_service.dart';
+import '../widgets/friend_search.dart';
 import '../widgets/peer_avatar.dart';
 
 /// 好友頁：好友列表、收到的邀請（接受、拒絕）、送出的邀請（取消）。
@@ -22,6 +23,8 @@ class FriendsPage extends StatefulWidget {
 class _FriendsPageState extends State<FriendsPage> {
   /// 正在處理的對象（accountId），避免連按
   final Set<String> _busy = {};
+
+  String _query = '';
 
   FriendService get _service => widget.service ?? FriendService.instance;
   AuthService get _auth => widget.auth ?? AuthService.instance;
@@ -117,7 +120,9 @@ class _FriendsPageState extends State<FriendsPage> {
           ),
         _header('好友（${s.friends.length}）'),
         if (s.friends.isEmpty) const _Empty('還沒有好友。開啟朋友的分享連結後按「加好友」即可送出邀請。'),
-        for (final p in s.friends) _tile(p),
+        if (s.friends.isNotEmpty)
+          FriendSearchField(onChanged: (v) => setState(() => _query = v)),
+        for (final p in sortAndFilterFriends(s.friends, _query)) _tile(p),
         _header('收到的邀請（${s.incoming.length}）'),
         if (s.incoming.isEmpty) const _Empty('沒有收到的邀請'),
         for (final p in s.incoming)
@@ -164,6 +169,7 @@ class _FriendsPageState extends State<FriendsPage> {
   Widget _tile(FriendPeer p, {List<Widget> actions = const []}) => ListTile(
     leading: PeerAvatar(picture: p.picture),
     title: Text(p.displayName),
+    subtitle: p.playing ? const Text('遊玩中') : null,
     trailing: actions.isEmpty
         ? null
         : Row(mainAxisSize: MainAxisSize.min, children: actions),
