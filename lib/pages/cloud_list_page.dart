@@ -39,6 +39,7 @@ class CloudListPage extends StatefulWidget {
     this.onDelete,
     this.onClear,
     this.extraActionsBuilder,
+    this.selectionActionsBuilder,
     this.canRetry,
   });
 
@@ -53,6 +54,10 @@ class CloudListPage extends StatefulWidget {
 
   /// 讀取成功後額外放在 AppBar 最右邊的動作（例如分享清單的「複製到我的雲端清單」）
   final List<Widget> Function(CloudListResult result)? extraActionsBuilder;
+
+  /// 依目前勾選的項目產生的 AppBar 動作（例如「推送給好友」）；放在下載按鈕之後
+  final List<Widget> Function(List<CloudEntry> selected)?
+  selectionActionsBuilder;
 
   /// 讀取失敗時是否顯示「重試」；預設一律顯示（例如連結已失效時重試沒有意義）
   final bool Function(CloudListResult result)? canRetry;
@@ -262,6 +267,11 @@ class _CloudListPageState extends State<CloudListPage> {
               )
             : null,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: '重新整理',
+            onPressed: _loading ? null : _load,
+          ),
           if (ok) ...[
             FilterChip(
               label: const Text('只看本機缺'),
@@ -279,6 +289,11 @@ class _CloudListPageState extends State<CloudListPage> {
               icon: const Icon(Icons.download),
               tooltip: '下載勾選的圖譜（${_selected.length}）',
               onPressed: _selected.isEmpty ? null : _download,
+            ),
+            ...?widget.selectionActionsBuilder?.call(
+              result.entries
+                  .where((e) => _selected.contains(e.onlineId))
+                  .toList(),
             ),
             if (widget.canDelete) ...[
               IconButton(

@@ -84,22 +84,39 @@ abstract final class PrefsService {
   }
 
   /// 目前登入的析域帳號（sub 與域民代號），token 另存在安全儲存
-  static Future<({String sub, String username})?> getAuthAccount() async {
+  static Future<({String sub, String username, String? picture})?>
+  getAuthAccount() async {
     final data = await _read();
     final sub = data['auth_sub'] as String?;
     if (sub == null || sub.isEmpty) return null;
-    return (sub: sub, username: (data['auth_username'] as String?) ?? '');
+    final pic = data['auth_picture'];
+    return (
+      sub: sub,
+      username: (data['auth_username'] as String?) ?? '',
+      // 舊版 config 沒有此欄位
+      picture: (pic is String && pic.isNotEmpty) ? pic : null,
+    );
   }
 
   /// 傳入 null 代表清除（登出或登入失效）
-  static Future<void> setAuthAccount(String? sub, String? username) async {
+  static Future<void> setAuthAccount(
+    String? sub,
+    String? username, {
+    String? picture,
+  }) async {
     final data = await _read();
     if (sub == null) {
       data.remove('auth_sub');
       data.remove('auth_username');
+      data.remove('auth_picture');
     } else {
       data['auth_sub'] = sub;
       data['auth_username'] = username ?? '';
+      if (picture == null || picture.isEmpty) {
+        data.remove('auth_picture');
+      } else {
+        data['auth_picture'] = picture;
+      }
     }
     await _write(data);
   }
@@ -136,6 +153,32 @@ abstract final class PrefsService {
     } else {
       data['auto_upload_sub'] = sub;
     }
+    await _write(data);
+  }
+
+  /// 關閉視窗時的行為：`ask`（每次詢問，預設）、`tray`（縮到系統匣）、`exit`（結束程式）。
+  /// 讀到不認得的值一律當作 `ask`
+  static Future<String> getCloseAction() async {
+    final data = await _read();
+    final v = data['close_action'];
+    return (v == 'tray' || v == 'exit') ? v as String : 'ask';
+  }
+
+  static Future<void> setCloseAction(String action) async {
+    final data = await _read();
+    data['close_action'] = action;
+    await _write(data);
+  }
+
+  /// 是否開機自動啟動（預設關閉）
+  static Future<bool> getLaunchAtStartup() async {
+    final data = await _read();
+    return (data['launch_at_startup'] as bool?) ?? false;
+  }
+
+  static Future<void> setLaunchAtStartup(bool value) async {
+    final data = await _read();
+    data['launch_at_startup'] = value;
     await _write(data);
   }
 }

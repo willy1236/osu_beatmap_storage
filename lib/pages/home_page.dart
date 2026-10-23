@@ -1,15 +1,37 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
-import '../services/auto_upload_service.dart';
+import '../services/friend_service.dart';
+import '../services/notification_service.dart';
+import '../utils/route_utils.dart';
 import '../widgets/danser_setup_gate.dart';
+import '../widgets/count_badge.dart';
 import '../widgets/open_share_link_dialog.dart';
+import '../widgets/peer_avatar.dart';
+import '../widgets/settings_dialog.dart';
 import '../widgets/share_dialog.dart';
 import '../widgets/update_button.dart';
 import 'beatmap_list_page.dart';
+import 'friends_page.dart';
 import 'replay_list_page.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  const HomePage({
+    super.key,
+    this.auth,
+    this.notifications,
+    this.friends,
+    this.beatmapPage,
+    this.friendsPage,
+  });
+
+  /// 以下皆為測試用；預設使用各 Service 的單例與正式頁面
+  final AuthService? auth;
+  final NotificationService? notifications;
+  final FriendService? friends;
+  @visibleForTesting
+  final Widget? beatmapPage;
+  @visibleForTesting
+  final Widget? friendsPage;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -21,13 +43,53 @@ class _HomePageState extends State<HomePage> {
   /// 第一次切到「回放匯出」後才建立該頁，danser 的檢查與下載延後到那時
   bool _replayOpened = false;
 
-  void _select(int i) => setState(() {
-    _selectedIndex = i;
-    if (i == 1) _replayOpened = true;
-  });
+  static const _friendsIndex = 2;
+
+  NotificationService get _notifications =>
+      widget.notifications ?? NotificationService.instance;
+  AuthService get _auth => widget.auth ?? AuthService.instance;
+  FriendService get _friends => widget.friends ?? FriendService.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    _notifications.intent.addListener(_onNotificationIntent);
+  }
+
+  @override
+  void dispose() {
+    _notifications.intent.removeListener(_onNotificationIntent);
+    super.dispose();
+  }
+
+  /// 點了通知：切到好友頁，細節由 [FriendsPage] 處理。
+  /// 上層開著對話框時不切換（視窗已還原，使用者回到對話框繼續操作）
+  void _onNotificationIntent() {
+    if (_notifications.intent.value == null) return;
+    if (topRouteIsPopup(Navigator.of(context))) return;
+    _select(_friendsIndex);
+  }
+
+  /// 好友頁在 [IndexedStack] 裡常駐，不會因為切換而重建；每次切到好友頁（含點通知）就重讀，
+  /// 讓「看清單」入口等反映對方最新的設定
+  void _select(int i) {
+    setState(() {
+      _selectedIndex = i;
+      if (i == 1) _replayOpened = true;
+    });
+    if (i == _friendsIndex && _auth.isLoggedIn) _friends.refresh();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final notifications = _notifications;
+    return ListenableBuilder(
+      listenable: notifications,
+      builder: (context, _) => _buildScaffold(notifications.badgeCount),
+    );
+  }
+
+  Widget _buildScaffold(int badge) {
     return Scaffold(
       body: Row(
         children: [
@@ -35,28 +97,43 @@ class _HomePageState extends State<HomePage> {
             selectedIndex: _selectedIndex,
             onDestinationSelected: _select,
             labelType: NavigationRailLabelType.all,
-            trailing: const Expanded(
+            trailing: Expanded(
               child: Align(
                 alignment: Alignment.bottomCenter,
                 child: Padding(
-                  padding: EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.only(bottom: 12),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
-                    children: [UpdateButton(), _AccountTile()],
+                    children: [
+                      const UpdateButton(),
+                      const _SettingsButton(),
+                      _AccountTile(auth: _auth),
+                    ],
                   ),
                 ),
               ),
             ),
-            destinations: const [
-              NavigationRailDestination(
+            destinations: [
+              const NavigationRailDestination(
                 icon: Icon(Icons.library_music_outlined),
                 selectedIcon: Icon(Icons.library_music),
                 label: Text('圖譜查看'),
               ),
-              NavigationRailDestination(
+              const NavigationRailDestination(
                 icon: Icon(Icons.play_circle_outline),
                 selectedIcon: Icon(Icons.play_circle),
                 label: Text('回放匯出'),
+              ),
+              NavigationRailDestination(
+                icon: CountBadge(
+                  count: badge,
+                  child: const Icon(Icons.people_outline),
+                ),
+                selectedIcon: CountBadge(
+                  count: badge,
+                  child: const Icon(Icons.people),
+                ),
+                label: const Text('好友'),
               ),
             ],
           ),
@@ -65,11 +142,12 @@ class _HomePageState extends State<HomePage> {
             child: IndexedStack(
               index: _selectedIndex,
               children: [
-                const BeatmapListPage(),
+                widget.beatmapPage ?? const BeatmapListPage(),
                 if (_replayOpened)
                   const DanserSetupGate(child: ReplayListPage())
                 else
                   const SizedBox.shrink(),
+                widget.friendsPage ?? const FriendsPage(),
               ],
             ),
           ),
@@ -79,13 +157,28 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-/// NavigationRail 底部的帳號入口：登入、取消、登出與狀態提示
-class _AccountTile extends StatelessWidget {
-  const _AccountTile();
+/// NavigationRail 底部的設定入口，開啟設定對話框
+class _SettingsButton extends StatelessWidget {
+  const _SettingsButton();
 
   @override
   Widget build(BuildContext context) {
-    final auth = AuthService.instance;
+    return IconButton(
+      tooltip: '設定',
+      icon: const Icon(Icons.settings_outlined),
+      onPressed: () => showSettingsDialog(context),
+    );
+  }
+}
+
+/// NavigationRail 底部的帳號入口：登入、取消、登出與狀態提示
+class _AccountTile extends StatelessWidget {
+  const _AccountTile({required this.auth});
+
+  final AuthService auth;
+
+  @override
+  Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: auth,
       builder: (context, _) {
@@ -125,7 +218,7 @@ class _AccountTile extends StatelessWidget {
                     ),
                   ],
                 ),
-                AuthStatus.loggedIn => const _AccountMenuButton(),
+                AuthStatus.loggedIn => _AccountMenuButton(auth: auth),
                 // 圖示與文字同屬一個按鈕，點圖示也能登入
                 _ => TextButton(
                   onPressed: auth.login,
@@ -145,28 +238,21 @@ class _AccountTile extends StatelessWidget {
 
 /// 帳號選單的一個可點項目
 class _AccountMenuItem {
-  const _AccountMenuItem(
-    this.icon,
-    this.label,
-    this.onSelected, {
-    this.checked,
-  });
+  const _AccountMenuItem(this.icon, this.label, this.onSelected);
   final IconData icon;
   final String label;
   final void Function(BuildContext context) onSelected;
-
-  /// 非 null 時這是勾選型項目：選單開啟時呼叫它取得目前是否勾選，
-  /// 點擊後仍呼叫 [onSelected]（由它自行切換狀態）
-  final bool Function()? checked;
 }
 
-/// 已登入時的帳號區：點擊彈出選單，rail 上只顯示圖示與域民代號。
+/// 已登入時的帳號區：點擊彈出選單，rail 上只顯示圖示。
 ///
-/// 新增選單項目（例如 T-05 的「自動上傳」、T-08 的「開啟分享連結」）：
+/// 新增選單項目（例如 T-08 的「開啟分享連結」）：
 /// 在 [_items] 清單中加一個 [_AccountMenuItem]；登出固定在清單最後，
 /// 新項目請插在標示「新項目插入處」的位置。
 class _AccountMenuButton extends StatelessWidget {
-  const _AccountMenuButton();
+  const _AccountMenuButton({required this.auth});
+
+  final AuthService auth;
 
   static final _items = <_AccountMenuItem>[
     _AccountMenuItem(
@@ -175,30 +261,17 @@ class _AccountMenuButton extends StatelessWidget {
       (context) => showShareDialog(context),
     ),
     _AccountMenuItem(
-      Icons.cloud_upload_outlined,
-      '自動上傳',
-      (_) => AutoUploadService.instance.toggle(),
-      checked: () => AutoUploadService.instance.enabled,
-    ),
-    _AccountMenuItem(
       Icons.link,
-      '開啟分享連結',
+      '開啟連結',
       (context) => showOpenShareLinkDialog(context),
     ),
     // —— 新項目插入處（登出之前）——
   ];
 
-  static final _logout = _AccountMenuItem(
-    Icons.logout,
-    '登出',
-    (_) => AuthService.instance.logout(),
-  );
-
   @override
   Widget build(BuildContext context) {
-    final auth = AuthService.instance;
-    final textTheme = Theme.of(context).textTheme.bodySmall;
-    final all = [..._items, _logout];
+    final logout = _AccountMenuItem(Icons.logout, '登出', (_) => auth.logout());
+    final all = [..._items, logout];
     return PopupMenuButton<_AccountMenuItem>(
       tooltip: '帳號選單',
       position: PopupMenuPosition.over,
@@ -213,39 +286,24 @@ class _AccountMenuButton extends StatelessWidget {
         ),
         const PopupMenuDivider(),
         for (final item in all) ...[
-          if (identical(item, _logout) && _items.isNotEmpty)
+          if (identical(item, logout) && _items.isNotEmpty)
             const PopupMenuDivider(),
-          if (item.checked case final isChecked?)
-            CheckedPopupMenuItem(
-              value: item,
-              checked: isChecked(),
-              child: Text(item.label),
-            )
-          else
-            PopupMenuItem(
-              value: item,
-              child: Row(
-                children: [
-                  Icon(item.icon, size: 20),
-                  const SizedBox(width: 12),
-                  Text(item.label),
-                ],
-              ),
+          PopupMenuItem(
+            value: item,
+            child: Row(
+              children: [
+                Icon(item.icon, size: 20),
+                const SizedBox(width: 12),
+                Text(item.label),
+              ],
             ),
-        ],
-      ],
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.account_circle_outlined),
-          Text(
-            auth.username ?? '',
-            style: textTheme,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
           ),
         ],
+      ],
+      // 代號只顯示在選單標題列，rail 上只留圖示
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: PeerAvatar(picture: auth.picture, radius: 14),
       ),
     );
   }
