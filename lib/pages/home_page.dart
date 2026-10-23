@@ -25,6 +25,27 @@ class _HomePageState extends State<HomePage> {
   /// 第一次切到「回放匯出」後才建立該頁，danser 的檢查與下載延後到那時
   bool _replayOpened = false;
 
+  static const _friendsIndex = 2;
+
+  @override
+  void initState() {
+    super.initState();
+    NotificationService.instance.intent.addListener(_onNotificationIntent);
+  }
+
+  @override
+  void dispose() {
+    NotificationService.instance.intent.removeListener(_onNotificationIntent);
+    super.dispose();
+  }
+
+  /// 點了通知：切到好友頁，細節由 [FriendsPage] 處理
+  void _onNotificationIntent() {
+    if (NotificationService.instance.intent.value != null) {
+      _select(_friendsIndex);
+    }
+  }
+
   void _select(int i) => setState(() {
     _selectedIndex = i;
     if (i == 1) _replayOpened = true;
