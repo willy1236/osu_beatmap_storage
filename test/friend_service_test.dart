@@ -129,7 +129,7 @@ void main() {
       (409, 'friend_limit', '好友已達上限'),
       (422, 'cannot_friend_self', '不能對自己送邀請'),
       (429, 'rate_limited', '今天送出的邀請太多，請稍後再試'),
-      (409, 'blocked_by_you', '你已封鎖這位域民'),
+      (409, 'blocked_by_you', '你已封鎖這位域民，請先到封鎖名單解除封鎖'),
       (404, 'not_found', '分享連結已失效'),
       (503, 'unavailable', '服務暫時無法使用，請稍後再試'),
       (401, 'unauthorized', '登入已失效，請重新登入'),

@@ -45,6 +45,9 @@ dependencies:
   url_launcher: ^6.3.3
   crypto: ^3.0.7
   app_links: ^7.2.2
+  window_manager: ^0.5.2
+  tray_manager: ^0.5.3
+  launch_at_startup: ^0.5.1
 
 dev_dependencies:
   flutter_test:
@@ -67,6 +70,10 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # 系統匣圖示：tray_manager 在 Windows 需要 .ico 路徑，沿用 runner 的 app icon
+  assets:
+    - windows/runner/resources/app_icon.ico
 
   # To add assets to your application, add an assets section, like this:
   # assets:
