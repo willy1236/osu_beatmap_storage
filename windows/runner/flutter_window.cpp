@@ -1,8 +1,26 @@
 #include "flutter_window.h"
 
 #include <optional>
+#include <string>
+#include <vector>
 
 #include "flutter/generated_plugin_registrant.h"
+#include "utils.h"
+
+namespace {
+
+// Launched at login with --autostart: keep the window hidden; the Dart side
+// moves the app to the system tray.
+bool IsAutostartLaunch() {
+  for (const auto& arg : GetCommandLineArguments()) {
+    if (arg == "--autostart") {
+      return true;
+    }
+  }
+  return false;
+}
+
+}  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -27,9 +45,13 @@ bool FlutterWindow::OnCreate() {
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
-  flutter_controller_->engine()->SetNextFrameCallback([&]() {
-    this->Show();
-  });
+  // Do not show the window on autostart; window_manager shows it when the user
+  // clicks the tray icon.
+  if (!IsAutostartLaunch()) {
+    flutter_controller_->engine()->SetNextFrameCallback([&]() {
+      this->Show();
+    });
+  }
 
   // Flutter can complete the first frame before the "show window" callback is
   // registered. The following call ensures a frame is pending to ensure the

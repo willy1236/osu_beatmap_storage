@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/friend_service.dart';
 import '../services/push_service.dart';
+import '../widgets/peer_action_menu.dart';
 import '../widgets/peer_avatar.dart';
+import 'blocked_page.dart';
 import 'inbox_page.dart';
 
 /// 好友頁：好友列表、收到的邀請（接受、拒絕）、送出的邀請（取消）。
@@ -65,6 +67,15 @@ class _FriendsPageState extends State<FriendsPage> {
                   context,
                   MaterialPageRoute(
                     builder: (_) => InboxPage(service: _push, auth: _auth),
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.block),
+                tooltip: '封鎖名單',
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => BlockedPage(service: widget.service),
                   ),
                 ),
               ),
@@ -133,7 +144,8 @@ class _FriendsPageState extends State<FriendsPage> {
           ),
         _header('好友（${s.friends.length}）'),
         if (s.friends.isEmpty) const _Empty('還沒有好友。開啟朋友的分享連結後按「加好友」即可送出邀請。'),
-        for (final p in s.friends) _tile(p),
+        for (final p in s.friends)
+          _tile(p, actions: [_menu(p, removable: true)]),
         _header('收到的邀請（${s.incoming.length}）'),
         if (s.incoming.isEmpty) const _Empty('沒有收到的邀請'),
         for (final p in s.incoming)
@@ -152,6 +164,7 @@ class _FriendsPageState extends State<FriendsPage> {
                     : () => _run(p, () => s.accept(p.accountId), '已成為好友'),
                 child: const Text('接受'),
               ),
+              _menu(p),
             ],
           ),
         _header('送出的邀請（${s.outgoing.length}）'),
@@ -171,6 +184,15 @@ class _FriendsPageState extends State<FriendsPage> {
       ],
     );
   }
+
+  Widget _menu(FriendPeer p, {bool removable = false}) => PeerActionMenu(
+    name: p.displayName,
+    enabled: !_busy.contains(p.accountId),
+    onRemove: removable
+        ? () => _run(p, () => _service.removeFriend(p.accountId), '已刪除好友')
+        : null,
+    onBlock: () => _run(p, () => _service.block(p.accountId), '已封鎖'),
+  );
 
   Widget _header(String text) => Padding(
     padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
