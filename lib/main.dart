@@ -11,7 +11,7 @@ import 'services/protocol_registrar.dart';
 void main(List<String> args) {
   // 從 osu-storage:// 連結啟動時，工作目錄沿用呼叫端（瀏覽器、Discord）的，
   // 改回執行檔所在資料夾，config.json 與下載資料夾才不會跑掉
-  if (args.any((a) => a.toLowerCase().startsWith('osu-storage:'))) {
+  if (args.any((a) => a.toLowerCase().startsWith('${ProtocolRegistrar.scheme}:'))) {
     Directory.current = p.dirname(Platform.resolvedExecutable);
   }
   WidgetsFlutterBinding.ensureInitialized();
