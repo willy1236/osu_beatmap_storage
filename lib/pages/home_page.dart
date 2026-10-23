@@ -126,12 +126,13 @@ class _AccountTile extends StatelessWidget {
                   ],
                 ),
                 AuthStatus.loggedIn => const _AccountMenuButton(),
-                _ => Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.login),
-                    TextButton(onPressed: auth.login, child: const Text('登入')),
-                  ],
+                // 圖示與文字同屬一個按鈕，點圖示也能登入
+                _ => TextButton(
+                  onPressed: auth.login,
+                  child: const Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [Icon(Icons.login), Text('登入')],
+                  ),
                 ),
               },
             ],
