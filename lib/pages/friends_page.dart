@@ -57,8 +57,11 @@ class _FriendsPageState extends State<FriendsPage> {
   void initState() {
     super.initState();
     _intent.addListener(_onIntent);
-    // 開好友頁時重讀，讓「看清單」入口反映對方最新的公開設定
-    if (_auth.isLoggedIn) _service.refresh();
+    // 單獨開啟好友頁時重讀；放在首幀之後，避免 build 期間通知其他 Listener。
+    // 在 HomePage 裡好友頁常駐，每次切到該頁的重讀由 HomePage 負責
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _auth.isLoggedIn) _service.refresh();
+    });
   }
 
   @override
@@ -73,6 +76,9 @@ class _FriendsPageState extends State<FriendsPage> {
     final target = _intent.value;
     if (target == null) return;
     _intent.value = null;
+    // 上面可能疊著別的 route（分享清單、收件匣、設定對話框）：先回到最底層，
+    // 也避免收件匣被重複疊上去
+    Navigator.of(context).popUntil((r) => r.isFirst);
     switch (target) {
       case NotificationTarget.invites:
         _scrollToInvites();
@@ -83,7 +89,9 @@ class _FriendsPageState extends State<FriendsPage> {
 
   void _openInbox() => Navigator.push(
     context,
-    MaterialPageRoute(builder: (_) => InboxPage(service: _push, auth: _auth)),
+    MaterialPageRoute(
+      builder: (_) => InboxPage(service: _push, auth: _auth),
+    ),
   );
 
   /// ListView 只建立畫面附近的項目，標題還沒建立時先捲到底再找一次

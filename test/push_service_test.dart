@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -37,7 +38,11 @@ void main() {
   List<dynamic> pushes = [];
   List<dynamic> friends = [];
 
+  /// 設定後，下一次收件匣 GET 先取好當下的資料，等 gate 完成才回應（模擬在途的舊回應）
+  Completer<void>? listGate;
+
   setUp(() {
+    listGate = null;
     calls = [];
     pushes = [];
     friends = [];
@@ -49,7 +54,11 @@ void main() {
     final o = handler(r);
     if (o != null) return o;
     if (r.method == 'GET' && r.url.path == '/osu/pushes') {
-      return jsonResp({'pushes': pushes});
+      final snapshot = jsonResp({'pushes': pushes});
+      final g = listGate;
+      listGate = null;
+      if (g != null) await g.future;
+      return snapshot;
     }
     if (r.method == 'GET' && r.url.path == '/social/friends') {
       return jsonResp({'friends': friends});
@@ -125,6 +134,41 @@ void main() {
       calls.where((c) => c.url.path == '/osu/pushes/p1/read'),
       hasLength(1),
     );
+  });
+
+  test('markRead 與在途的 refresh 競態：舊回應不會把已讀蓋回未讀', () async {
+    pushes = [pushJson('p1')];
+    final s = await make();
+    final gate = listGate = Completer<void>();
+    final refreshing = s.refresh(); // 舊回應：p1 未讀
+    await pumpEventQueue();
+    // 伺服器端此後已讀
+    pushes = [pushJson('p1', read: true)];
+    expect(await s.markRead('p1'), isTrue);
+    gate.complete();
+    await refreshing;
+    expect(s.unreadCount, 0);
+    expect(s.items.single.read, isTrue);
+    // 在途讀取結束後補讀了一次
+    expect(
+      calls.where((c) => c.url.path == '/osu/pushes' && c.method == 'GET'),
+      hasLength(3),
+    );
+  });
+
+  test('markRead 失敗時在途讀取仍以伺服器為準（不殘留已讀）', () async {
+    pushes = [pushJson('p1')];
+    final s = await make();
+    final gate = listGate = Completer<void>();
+    final refreshing = s.refresh();
+    await pumpEventQueue();
+    handler = (r) => r.url.path.endsWith('/read')
+        ? jsonResp({'err': 'not_found'}, 404)
+        : null;
+    expect(await s.markRead('p1'), isFalse);
+    gate.complete();
+    await refreshing;
+    expect(s.unreadCount, 1);
   });
 
   test('markRead 失敗時還原為未讀', () async {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../services/friend_service.dart';
 import '../services/notification_service.dart';
 import '../widgets/danser_setup_gate.dart';
 import '../widgets/count_badge.dart';
@@ -13,7 +14,23 @@ import 'friends_page.dart';
 import 'replay_list_page.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  const HomePage({
+    super.key,
+    this.auth,
+    this.notifications,
+    this.friends,
+    this.beatmapPage,
+    this.friendsPage,
+  });
+
+  /// 以下皆為測試用；預設使用各 Service 的單例與正式頁面
+  final AuthService? auth;
+  final NotificationService? notifications;
+  final FriendService? friends;
+  @visibleForTesting
+  final Widget? beatmapPage;
+  @visibleForTesting
+  final Widget? friendsPage;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -27,33 +44,43 @@ class _HomePageState extends State<HomePage> {
 
   static const _friendsIndex = 2;
 
+  NotificationService get _notifications =>
+      widget.notifications ?? NotificationService.instance;
+  AuthService get _auth => widget.auth ?? AuthService.instance;
+  FriendService get _friends => widget.friends ?? FriendService.instance;
+
   @override
   void initState() {
     super.initState();
-    NotificationService.instance.intent.addListener(_onNotificationIntent);
+    _notifications.intent.addListener(_onNotificationIntent);
   }
 
   @override
   void dispose() {
-    NotificationService.instance.intent.removeListener(_onNotificationIntent);
+    _notifications.intent.removeListener(_onNotificationIntent);
     super.dispose();
   }
 
   /// 點了通知：切到好友頁，細節由 [FriendsPage] 處理
   void _onNotificationIntent() {
-    if (NotificationService.instance.intent.value != null) {
+    if (_notifications.intent.value != null) {
       _select(_friendsIndex);
     }
   }
 
-  void _select(int i) => setState(() {
-    _selectedIndex = i;
-    if (i == 1) _replayOpened = true;
-  });
+  /// 好友頁在 [IndexedStack] 裡常駐，不會因為切換而重建；每次切到好友頁（含點通知）就重讀，
+  /// 讓「看清單」入口等反映對方最新的設定
+  void _select(int i) {
+    setState(() {
+      _selectedIndex = i;
+      if (i == 1) _replayOpened = true;
+    });
+    if (i == _friendsIndex && _auth.isLoggedIn) _friends.refresh();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final notifications = NotificationService.instance;
+    final notifications = _notifications;
     return ListenableBuilder(
       listenable: notifications,
       builder: (context, _) => _buildScaffold(notifications.badgeCount),
@@ -68,17 +95,17 @@ class _HomePageState extends State<HomePage> {
             selectedIndex: _selectedIndex,
             onDestinationSelected: _select,
             labelType: NavigationRailLabelType.all,
-            trailing: const Expanded(
+            trailing: Expanded(
               child: Align(
                 alignment: Alignment.bottomCenter,
                 child: Padding(
-                  padding: EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.only(bottom: 12),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      UpdateButton(),
-                      _SettingsButton(),
-                      _AccountTile(),
+                      const UpdateButton(),
+                      const _SettingsButton(),
+                      _AccountTile(auth: _auth),
                     ],
                   ),
                 ),
@@ -113,12 +140,12 @@ class _HomePageState extends State<HomePage> {
             child: IndexedStack(
               index: _selectedIndex,
               children: [
-                const BeatmapListPage(),
+                widget.beatmapPage ?? const BeatmapListPage(),
                 if (_replayOpened)
                   const DanserSetupGate(child: ReplayListPage())
                 else
                   const SizedBox.shrink(),
-                const FriendsPage(),
+                widget.friendsPage ?? const FriendsPage(),
               ],
             ),
           ),
@@ -144,11 +171,12 @@ class _SettingsButton extends StatelessWidget {
 
 /// NavigationRail 底部的帳號入口：登入、取消、登出與狀態提示
 class _AccountTile extends StatelessWidget {
-  const _AccountTile();
+  const _AccountTile({required this.auth});
+
+  final AuthService auth;
 
   @override
   Widget build(BuildContext context) {
-    final auth = AuthService.instance;
     return ListenableBuilder(
       listenable: auth,
       builder: (context, _) {
@@ -188,7 +216,7 @@ class _AccountTile extends StatelessWidget {
                     ),
                   ],
                 ),
-                AuthStatus.loggedIn => const _AccountMenuButton(),
+                AuthStatus.loggedIn => _AccountMenuButton(auth: auth),
                 // 圖示與文字同屬一個按鈕，點圖示也能登入
                 _ => TextButton(
                   onPressed: auth.login,
@@ -220,7 +248,9 @@ class _AccountMenuItem {
 /// 在 [_items] 清單中加一個 [_AccountMenuItem]；登出固定在清單最後，
 /// 新項目請插在標示「新項目插入處」的位置。
 class _AccountMenuButton extends StatelessWidget {
-  const _AccountMenuButton();
+  const _AccountMenuButton({required this.auth});
+
+  final AuthService auth;
 
   static final _items = <_AccountMenuItem>[
     _AccountMenuItem(
@@ -236,16 +266,10 @@ class _AccountMenuButton extends StatelessWidget {
     // —— 新項目插入處（登出之前）——
   ];
 
-  static final _logout = _AccountMenuItem(
-    Icons.logout,
-    '登出',
-    (_) => AuthService.instance.logout(),
-  );
-
   @override
   Widget build(BuildContext context) {
-    final auth = AuthService.instance;
-    final all = [..._items, _logout];
+    final logout = _AccountMenuItem(Icons.logout, '登出', (_) => auth.logout());
+    final all = [..._items, logout];
     return PopupMenuButton<_AccountMenuItem>(
       tooltip: '帳號選單',
       position: PopupMenuPosition.over,
@@ -260,7 +284,7 @@ class _AccountMenuButton extends StatelessWidget {
         ),
         const PopupMenuDivider(),
         for (final item in all) ...[
-          if (identical(item, _logout) && _items.isNotEmpty)
+          if (identical(item, logout) && _items.isNotEmpty)
             const PopupMenuDivider(),
           PopupMenuItem(
             value: item,

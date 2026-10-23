@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import 'api_client.dart';
 import 'auth_service.dart';
+import 'realtime_service.dart';
 
 /// 好友或邀請列表上的一位域民
 class FriendPeer {
@@ -89,18 +90,25 @@ class FriendActionResult {
 /// - 送出、接受、拒絕、取消之後一律重讀，不樂觀更新：被對方封鎖時後端仍回「已送出」，
 ///   本機列表以重讀的結果為準
 /// - 讀取失敗時保留上一次的結果並設 [error]
+/// - 訂閱 [RealtimeService.resyncRequested]（重連成功）時整份重讀，不發通知
 class FriendService extends ChangeNotifier {
-  FriendService({ApiClient? api, AuthService? auth})
+  FriendService({ApiClient? api, AuthService? auth, RealtimeService? realtime})
     : _api = api ?? ApiClient.instance,
-      _auth = auth ?? AuthService.instance {
+      _auth = auth ?? AuthService.instance,
+      _realtime = realtime {
     _auth.addListener(_onAuthChanged);
+    _realtime?.resyncRequested.addListener(_onResync);
     _onAuthChanged();
   }
 
-  static final FriendService instance = FriendService();
+  /// 單例會訂閱 [RealtimeService.instance] 的重連訊號；測試建立的實例預設不訂閱
+  static final FriendService instance = FriendService(
+    realtime: RealtimeService.instance,
+  );
 
   final ApiClient _api;
   final AuthService _auth;
+  final RealtimeService? _realtime;
 
   List<FriendPeer> _friends = const [];
   List<FriendPeer> _incoming = const [];
@@ -185,7 +193,12 @@ class FriendService extends ChangeNotifier {
         browsable = r[2] as Set<String>;
         for (final resp in r.take(2).cast<http.Response>()) {
           if (resp.statusCode != 200) {
-            err = _errorFor(resp.statusCode, _errCode(resp), '讀取失敗').$2;
+            err = _errorFor(
+              resp.statusCode,
+              _errCode(resp),
+              '讀取失敗',
+              reading: true,
+            ).$2;
           }
         }
         if (err == null) {
@@ -326,7 +339,12 @@ class FriendService extends ChangeNotifier {
     try {
       final resp = await _api.send('GET', '/social/blocks');
       if (resp.statusCode != 200) {
-        err = _errorFor(resp.statusCode, _errCode(resp), '讀取失敗').$2;
+        err = _errorFor(
+          resp.statusCode,
+          _errCode(resp),
+          '讀取失敗',
+          reading: true,
+        ).$2;
       } else {
         blocks = _peers(_decode(resp)['blocks'], 'created_at');
       }
@@ -419,6 +437,7 @@ class FriendService extends ChangeNotifier {
     String? err,
     String what, {
     String notFound = '找不到這筆資料',
+    bool reading = false,
   }) {
     final code =
         err ??
@@ -435,7 +454,8 @@ class FriendService extends ChangeNotifier {
         'already_friends' => '你們已經是好友',
         'friend_limit' => '好友已達上限',
         'cannot_friend_self' => '不能對自己送邀請',
-        'rate_limited' => '今天送出的邀請太多，請稍後再試',
+        // 讀取列表被限流與「送邀請太多」無關，文案分開
+        'rate_limited' => reading ? '請求太頻繁，請稍後再試' : '今天送出的邀請太多，請稍後再試',
         'blocked_by_you' => '你已封鎖這位域民，請先到封鎖名單解除封鎖',
         'cannot_block_self' => '不能封鎖自己',
         'not_found' => notFound,
@@ -444,6 +464,10 @@ class FriendService extends ChangeNotifier {
         _ => '$what（HTTP $status）',
       },
     );
+  }
+
+  void _onResync() {
+    if (_auth.isLoggedIn) unawaited(refresh());
   }
 
   void _onAuthChanged() {
@@ -463,6 +487,7 @@ class FriendService extends ChangeNotifier {
   @override
   void dispose() {
     _auth.removeListener(_onAuthChanged);
+    _realtime?.resyncRequested.removeListener(_onResync);
     super.dispose();
   }
 }
