@@ -9,6 +9,7 @@ import 'services/auto_upload_service.dart';
 import 'services/cloud_presence_service.dart';
 import 'services/friend_service.dart';
 import 'services/protocol_registrar.dart';
+import 'services/realtime_service.dart';
 import 'services/update_service.dart';
 
 void main(List<String> args) {
@@ -28,6 +29,8 @@ void main(List<String> args) {
   CloudPresenceService.instance;
   // 盡早建立：登入還原後自動讀取好友與邀請
   FriendService.instance;
+  // 盡早建立：登入還原後連上即時事件通道，之後的通知與上線狀態都靠它
+  RealtimeService.instance;
   // 盡早開始接收連結（冷啟動的第一條連結會先暫存到開始監聽）
   AppLinkService.instance.start();
   // 不等待：註冊 osu-storage:// 指向目前的執行檔，失敗不影響程式
