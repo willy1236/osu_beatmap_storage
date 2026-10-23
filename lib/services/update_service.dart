@@ -150,7 +150,9 @@ class UpdateService extends ChangeNotifier {
         started: started,
       );
       if (!ok) {
-        throw Exception('更新程式沒有啟動，請改為手動下載 zip 更新');
+        _error = '更新失敗：更新程式沒有啟動，請改為手動下載 zip 更新';
+        _setStatus(UpdateStatus.failed, null);
+        return;
       }
       exit(0);
     } catch (e) {
@@ -172,6 +174,7 @@ class UpdateService extends ChangeNotifier {
     required String target,
     required String exe,
     required String started,
+    int waitSeconds = 60,
   }) => [
     '-NoProfile',
     '-ExecutionPolicy',
@@ -190,6 +193,8 @@ class UpdateService extends ChangeNotifier {
     exe,
     '-Started',
     started,
+    '-WaitSeconds',
+    '$waitSeconds',
   ];
 
   /// 啟動腳本並等它寫出 [started] 標記，確認真的跑起來才回傳 true。
@@ -198,7 +203,7 @@ class UpdateService extends ChangeNotifier {
   static Future<bool> launchApplyScript({
     required Future<Process> Function() start,
     required File started,
-    Duration timeout = const Duration(seconds: 10),
+    Duration timeout = const Duration(seconds: 30),
     Duration interval = const Duration(milliseconds: 100),
   }) async {
     Process? proc;
@@ -214,7 +219,7 @@ class UpdateService extends ChangeNotifier {
       await Future<void>.delayed(interval);
     }
     if (started.existsSync()) return true;
-    proc.kill();
+    if (!proc.kill()) debugPrint('逾時後無法終止更新腳本程序 (pid ${proc.pid})');
     return false;
   }
 
@@ -270,38 +275,64 @@ void _extract(({String zip, String out}) args) {
 }
 
 /// 等程式結束 → 舊程式檔移到 .update_backup → 複製新檔 → 重新啟動。
-/// 複製失敗就把備份搬回去，錯誤寫進 update_error.log。只動程式檔，不碰資料。
+/// 舊程式逾時仍未結束就放棄更新（不換檔、不重啟）。換檔失敗會盡力回滾，
+/// 錯誤寫進 update_error.log，且無論如何都會重新啟動程式。只動程式檔，不碰資料。
 const _applyScript = r'''
-param([int]$AppPid, [string]$Source, [string]$Target, [string]$Exe, [string]$Started)
+param([int]$AppPid, [string]$Source, [string]$Target, [string]$Exe, [string]$Started, [int]$WaitSeconds = 60)
 $ErrorActionPreference = 'Stop'
 Set-Content -LiteralPath $Started -Value 'started'
-Wait-Process -Id $AppPid -Timeout 60 -ErrorAction SilentlyContinue
+$log = Join-Path $Target 'update_error.log'
+
+Wait-Process -Id $AppPid -Timeout $WaitSeconds -ErrorAction SilentlyContinue
+if (Get-Process -Id $AppPid -ErrorAction SilentlyContinue) {
+  try { "舊程式 (pid $AppPid) 在 $WaitSeconds 秒內沒有結束，已放棄更新" | Out-File -FilePath $log -Encoding utf8 } catch {}
+  exit 1
+}
 Start-Sleep -Milliseconds 500
 
 $backup = Join-Path $Target '.update_backup'
-if (Test-Path $backup) { Remove-Item $backup -Recurse -Force }
-New-Item -ItemType Directory -Path $backup | Out-Null
-
-$old = @(Get-ChildItem -Path $Target -File -Filter '*.dll')
-foreach ($name in @($Exe, 'data')) {
-  $path = Join-Path $Target $name
-  if (Test-Path $path) { $old += Get-Item $path }
-}
-
+$moved = $false
+$copying = $false
 try {
+  if (Test-Path $backup) { Remove-Item $backup -Recurse -Force }
+  New-Item -ItemType Directory -Path $backup | Out-Null
+
+  $old = @(Get-ChildItem -Path $Target -File -Filter '*.dll')
+  foreach ($name in @($Exe, 'data')) {
+    $path = Join-Path $Target $name
+    if (Test-Path $path) { $old += Get-Item $path }
+  }
+
+  $moved = $true
   foreach ($item in $old) { Move-Item -Path $item.FullName -Destination $backup }
+  $copying = $true
   Get-ChildItem -Path $Source | Copy-Item -Destination $Target -Recurse -Force
   Remove-Item $backup -Recurse -Force
 } catch {
-  $_ | Out-File -FilePath (Join-Path $Target 'update_error.log') -Encoding utf8
-  foreach ($item in Get-ChildItem -Path $Source) {
-    $path = Join-Path $Target $item.Name
-    if (Test-Path $path) { Remove-Item $path -Recurse -Force -ErrorAction SilentlyContinue }
+  try { $_ | Out-File -FilePath $log -Encoding utf8 } catch {}
+  if ($moved) {
+    # 盡力回滾：每一步失敗都繼續做下一步
+    $ErrorActionPreference = 'Continue'
+    if ($copying) {
+      # 只有已開始複製才需要清掉新檔；否則同名檔就是還沒搬走的舊檔，不能刪
+      foreach ($item in @(Get-ChildItem -Path $Source)) {
+        $path = Join-Path $Target $item.Name
+        if (Test-Path $path) { Remove-Item $path -Recurse -Force -ErrorAction SilentlyContinue }
+      }
+    }
+    foreach ($item in @(Get-ChildItem -Path $backup)) {
+      Move-Item -Path $item.FullName -Destination $Target -Force -ErrorAction Continue
+    }
+    if (-not @(Get-ChildItem -Path $backup -ErrorAction SilentlyContinue)) {
+      Remove-Item $backup -Recurse -Force -ErrorAction SilentlyContinue
+    }
   }
-  Get-ChildItem -Path $backup | Move-Item -Destination $Target -Force
-  Remove-Item $backup -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-Start-Process -FilePath (Join-Path $Target $Exe) -WorkingDirectory $Target
+try {
+  Start-Process -FilePath (Join-Path $Target $Exe) -WorkingDirectory $Target
+} catch {
+  try { $_ | Out-File -FilePath $log -Append -Encoding utf8 } catch {}
+}
 Remove-Item $Source -Recurse -Force -ErrorAction SilentlyContinue
 ''';

@@ -151,9 +151,12 @@ void _applyScriptTests() {
     });
   });
 
-  test(
-    '真實腳本：路徑含空格與 % 也能啟動並完成替換',
-    () async {
+  group('真實腳本', () {
+    // 每個 case 在獨立資料夾執行；用 cmd 當「新版執行檔」，啟動後寫 ran.txt 當作重啟訊號
+    Future<({Directory source, Directory target, File started})> setup(
+      String name, {
+      bool cmdExe = true,
+    }) async {
       final root = Directory.systemTemp.createTempSync('upd real');
       addTearDown(() {
         try {
@@ -162,44 +165,141 @@ void _applyScriptTests() {
           // 剛啟動的程序可能還鎖著資料夾，留給系統清理
         }
       });
-      final base = '${root.path}/a b %TEMP% & ^ (x)';
+      final base = '${root.path}/$name';
       final source = Directory('$base/src')..createSync(recursive: true);
       final target = Directory('$base/app')..createSync(recursive: true);
       File('${source.path}/new.dll').writeAsStringSync('new');
-      // 用會立刻結束的真實 exe 當作「新版執行檔」
-      File(
-        '${Platform.environment['SystemRoot']}/System32/hostname.exe',
-      ).copySync('${source.path}/run.exe');
       File('${target.path}/old.dll').writeAsStringSync('old');
-      final script = File('$base/apply.ps1')
-        ..writeAsStringSync(UpdateService.applyScriptSource);
-      final started = File('$base/started.flag');
+      if (cmdExe) {
+        // 路徑不含特殊字元時才能用 cmd 腳本當執行檔；寫入 ran.txt 作為重啟訊號
+        File(
+          '${source.path}/run.cmd',
+        ).writeAsStringSync('@echo ran> "%~dp0ran.txt"');
+        File(
+          '${target.path}/run.cmd',
+        ).writeAsStringSync('@echo ran> "%~dp0ran.txt"');
+      } else {
+        // 用會立刻結束的真實 exe 當作「新版執行檔」
+        File(
+          '${Platform.environment['SystemRoot']}/System32/hostname.exe',
+        ).copySync('${source.path}/run.exe');
+      }
+      File(
+        '$base/apply.ps1',
+      ).writeAsStringSync(UpdateService.applyScriptSource);
+      return (
+        source: source,
+        target: target,
+        started: File('$base/started.flag'),
+      );
+    }
 
-      final ok = await UpdateService.launchApplyScript(
+    Future<bool> run(
+      ({Directory source, Directory target, File started}) c, {
+      required int appPid,
+      String exe = 'run.cmd',
+      int waitSeconds = 60,
+    }) {
+      final script = '${c.started.parent.path}/apply.ps1';
+      return UpdateService.launchApplyScript(
         start: () => Process.start(
           'powershell',
           UpdateService.applyScriptArgs(
-            script: script.path,
-            appPid: 999999, // 不存在的程序，Wait-Process 立即略過
-            source: source.path,
-            target: target.path,
-            exe: 'run.exe',
-            started: started.path,
+            script: script,
+            appPid: appPid,
+            source: c.source.path,
+            target: c.target.path,
+            exe: exe,
+            started: c.started.path,
+            waitSeconds: waitSeconds,
           ),
         ),
-        started: started,
+        started: c.started,
         timeout: const Duration(seconds: 30),
       );
-      expect(ok, isTrue);
-      // 標記出現時腳本還在跑，等替換完成（Source 被清掉是最後一步）
-      for (var i = 0; i < 150 && source.existsSync(); i++) {
+    }
+
+    Future<void> until(bool Function() cond) async {
+      for (var i = 0; i < 150 && !cond(); i++) {
         await Future<void>.delayed(const Duration(milliseconds: 100));
       }
-      expect(File('${target.path}/new.dll').existsSync(), isTrue);
-      expect(File('${target.path}/old.dll').existsSync(), isFalse);
-      expect(File('${target.path}/run.exe').existsSync(), isTrue);
-    },
-    skip: !Platform.isWindows,
-    timeout: const Timeout(Duration(seconds: 40)),
-  );
+    }
+
+    Future<int> deadPid() async =>
+        (await Process.run('cmd', ['/c', 'exit'])).pid;
+
+    test('路徑含空格與 % 也能啟動並完成替換', () async {
+      final c = await setup('a b %TEMP% & ^ (x)', cmdExe: false);
+      expect(await run(c, appPid: await deadPid(), exe: 'run.exe'), isTrue);
+      // 標記出現時腳本還在跑，等替換完成（Source 被清掉是最後一步）
+      await until(() => !c.source.existsSync());
+      expect(File('${c.target.path}/new.dll').existsSync(), isTrue);
+      expect(File('${c.target.path}/old.dll').existsSync(), isFalse);
+      expect(File('${c.target.path}/run.exe').existsSync(), isTrue);
+    });
+
+    test('舊程式逾時仍在執行：不換檔、不重啟', () async {
+      final c = await setup('alive');
+      final sleeper = await Process.start('powershell', [
+        '-NoProfile',
+        '-Command',
+        'Start-Sleep 60',
+      ]);
+      addTearDown(sleeper.kill);
+      expect(await run(c, appPid: sleeper.pid, waitSeconds: 1), isTrue);
+      final log = File('${c.target.path}/update_error.log');
+      await until(log.existsSync);
+      await Future<void>.delayed(const Duration(seconds: 2));
+      expect(log.existsSync(), isTrue);
+      expect(File('${c.target.path}/old.dll').existsSync(), isTrue);
+      expect(File('${c.target.path}/new.dll').existsSync(), isFalse);
+      expect(File('${c.target.path}/ran.txt').existsSync(), isFalse);
+      expect(c.source.existsSync(), isTrue);
+    });
+
+    test('備份目錄無法建立：不換檔，仍重啟', () async {
+      final c = await setup('nobackup');
+      final backup = Directory('${c.target.path}/.update_backup')..createSync();
+      final locked = File('${backup.path}/x.bin')..writeAsStringSync('x');
+      final raf = locked.openSync(mode: FileMode.write); // 鎖住，Remove-Item 會失敗
+      addTearDown(raf.closeSync);
+      expect(await run(c, appPid: await deadPid()), isTrue);
+      final ran = File('${c.target.path}/ran.txt');
+      await until(ran.existsSync);
+      expect(ran.existsSync(), isTrue);
+      expect(File('${c.target.path}/old.dll').readAsStringSync(), 'old');
+      expect(File('${c.target.path}/new.dll').existsSync(), isFalse);
+      expect(File('${c.target.path}/update_error.log').existsSync(), isTrue);
+    });
+
+    test('換檔中途失敗：回滾已搬走的檔案，仍重啟', () async {
+      final c = await setup('rollback');
+      File('${c.target.path}/a.dll').writeAsStringSync('A');
+      // z.dll 被鎖住，搬到備份時失敗；a.dll、old.dll 已先搬走，需被回滾
+      final raf = File('${c.target.path}/z.dll').openSync(mode: FileMode.write)
+        ..writeStringSync('Z');
+      addTearDown(raf.closeSync);
+      expect(await run(c, appPid: await deadPid()), isTrue);
+      final ran = File('${c.target.path}/ran.txt');
+      await until(ran.existsSync);
+      expect(ran.existsSync(), isTrue);
+      expect(File('${c.target.path}/a.dll').readAsStringSync(), 'A');
+      expect(File('${c.target.path}/old.dll').readAsStringSync(), 'old');
+      expect(File('${c.target.path}/new.dll').existsSync(), isFalse);
+      expect(File('${c.target.path}/update_error.log').existsSync(), isTrue);
+    });
+
+    test('複製新檔失敗：清掉新檔並回滾舊檔，仍重啟', () async {
+      final c = await setup('copyfail');
+      File('${c.source.path}/zz.txt').writeAsStringSync('new');
+      // 目標的 zz.txt 其實是資料夾，複製檔案蓋上去會失敗
+      Directory('${c.target.path}/zz.txt').createSync();
+      expect(await run(c, appPid: await deadPid()), isTrue);
+      final ran = File('${c.target.path}/ran.txt');
+      await until(ran.existsSync);
+      expect(ran.existsSync(), isTrue);
+      expect(File('${c.target.path}/old.dll').readAsStringSync(), 'old');
+      expect(File('${c.target.path}/new.dll').existsSync(), isFalse);
+    });
+  }, skip: !Platform.isWindows);
 }

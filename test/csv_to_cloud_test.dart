@@ -3,9 +3,8 @@ import 'package:osu_beatmap_storage/models/csv_row.dart';
 import 'package:osu_beatmap_storage/utils/beatmap_csv.dart';
 import 'package:osu_beatmap_storage/utils/csv_to_cloud.dart';
 
-CsvRow row(List<String> fields) => CsvRow({
-  for (var i = 0; i < fields.length; i++) kCsvHeader[i]: fields[i],
-});
+CsvRow row(List<String> fields) =>
+    CsvRow({for (var i = 0; i < fields.length; i++) kCsvHeader[i]: fields[i]});
 
 void main() {
   final now = DateTime(2026, 10, 23, 12, 30);
@@ -13,8 +12,20 @@ void main() {
   test('完整的一列各欄位反解析', () {
     final r = csvRowsToCloudEntries([
       row([
-        '123', 'T', 'TU', 'A', 'AU', 'C', 'Ranked', '5', 'osu/taiko',
-        '1.50', '5.25', '120-180', '2024-01-05', '2023-12-31',
+        '123',
+        'T',
+        'TU',
+        'A',
+        'AU',
+        'C',
+        'Ranked',
+        '5',
+        'osu/taiko',
+        '1.50',
+        '5.25',
+        '120-180',
+        '2024-01-05',
+        '2023-12-31',
       ]),
     ], now: now);
     expect(r.skipped, 0);
@@ -109,7 +120,20 @@ void main() {
     CsvCloudConversion c(String added, String submitted) =>
         csvRowsToCloudEntries([
           row([
-            '1', '', '', '', '', '', '', '', '', '', '', '', added, submitted,
+            '1',
+            '',
+            '',
+            '',
+            '',
+            '',
+            '',
+            '',
+            '',
+            '',
+            '',
+            '',
+            added,
+            submitted,
           ]),
         ], now: now);
     expect(c('', '').entries.single.dateAdded, now);

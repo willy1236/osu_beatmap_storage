@@ -5,18 +5,22 @@ import 'package:osu_beatmap_storage/models/cloud_entry.dart';
 import 'package:osu_beatmap_storage/models/osu_realm_models.dart';
 import 'package:realm/realm.dart';
 
-BeatmapInfo bm(double star, double bpm, {String? mode, BeatmapMetadata? meta}) =>
-    BeatmapInfo(
-      Uuid.v4(),
-      0,
-      false,
-      0,
-      0,
-      bpm,
-      star,
-      ruleset: mode == null ? null : RulesetInfo(mode, 0, 0, true),
-      metadata: meta,
-    );
+BeatmapInfo bm(
+  double star,
+  double bpm, {
+  String? mode,
+  BeatmapMetadata? meta,
+}) => BeatmapInfo(
+  Uuid.v4(),
+  0,
+  false,
+  0,
+  0,
+  bpm,
+  star,
+  ruleset: mode == null ? null : RulesetInfo(mode, 0, 0, true),
+  metadata: meta,
+);
 
 void main() {
   test('toCloudEntry：欄位對應、原始 double、略過 null ruleset', () {
@@ -45,13 +49,10 @@ void main() {
     );
     final e = toCloudEntry(s);
     expect(e.onlineId, 42);
-    expect([e.title, e.titleUnicode, e.artist, e.artistUnicode, e.creator], [
-      'T',
-      'TU',
-      'A',
-      'AU',
-      'mapper',
-    ]);
+    expect(
+      [e.title, e.titleUnicode, e.artist, e.artistUnicode, e.creator],
+      ['T', 'TU', 'A', 'AU', 'mapper'],
+    );
     expect(e.status, 4);
     expect(e.difficultyCount, 4);
     expect(e.modes, ['osu', 'taiko']);
