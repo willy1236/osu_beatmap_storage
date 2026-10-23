@@ -15,6 +15,7 @@ import '../services/cloud_presence_service.dart';
 import '../services/cloud_sync_service.dart';
 import '../services/download_service.dart';
 import '../services/local_library_service.dart';
+import '../services/osu_dir_detector.dart';
 import '../services/prefs_service.dart';
 import '../services/realm_service.dart';
 import '../utils/beatmap_csv.dart';
@@ -58,7 +59,16 @@ class _BeatmapListPageState extends State<BeatmapListPage> {
   Future<void> _initPath() async {
     final isFirst = !(await PrefsService.hasOsuDir());
     if (isFirst) {
-      // 首次啟動：等 widget tree 就緒後直接彈出選取器
+      final detected = await OsuDirDetector.detect();
+      if (detected != null) {
+        await PrefsService.setOsuDir(detected);
+        if (!mounted) return;
+        setState(() => _osuDir = detected);
+        _loadRealm(autoUpload: true);
+        return;
+      }
+      if (!mounted) return;
+      // 首次啟動且找不到：等 widget tree 就緒後直接彈出選取器
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => _pickRealmFile(isFirstLaunch: true),
       );
