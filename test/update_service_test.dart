@@ -110,6 +110,81 @@ void _applyScriptTests() {
     });
   });
 
+  test('長重試預設約 30 秒，並用在搬移與回滾', () {
+    final src = UpdateService.applyScriptSource;
+    expect(src, contains(r'[int]$LongTries = 60'));
+    expect(src, contains(r'$delay = 500'));
+    for (final w in ['back up', 'place', 'move new', 'restore']) {
+      final line = src
+          .split(String.fromCharCode(10))
+          .firstWhere((l) => l.contains('"$w '));
+      expect(line, contains('-Long'), reason: w);
+    }
+  });
+
+  group('isCompletePackage', () {
+    late Directory dir;
+    setUp(() => dir = Directory.systemTemp.createTempSync('pkg'));
+    tearDown(() => dir.deleteSync(recursive: true));
+
+    void make({bool exe = true, bool dll = true, bool data = true}) {
+      if (exe) {
+        File('${dir.path}/osu_beatmap_storage.exe').writeAsStringSync('x');
+      }
+      if (dll) File('${dir.path}/flutter_windows.dll').writeAsStringSync('x');
+      if (data) Directory('${dir.path}/data').createSync();
+    }
+
+    test('三者齊全才算完整', () {
+      make();
+      expect(UpdateService.isCompletePackage(dir), isTrue);
+    });
+    test('缺 dll 或 data 都不完整', () {
+      make(dll: false);
+      expect(UpdateService.isCompletePackage(dir), isFalse);
+      File('${dir.path}/flutter_windows.dll').writeAsStringSync('x');
+      expect(UpdateService.isCompletePackage(dir), isTrue);
+      Directory('${dir.path}/data').deleteSync();
+      expect(UpdateService.isCompletePackage(dir), isFalse);
+    });
+    test('訊息提示手動下載', () {
+      expect(
+        UpdateService.describeError(
+          const UpdateException(UpdateService.incompleteMessage),
+        ),
+        '更新失敗：下載的檔案不完整，請改為手動下載 zip 更新',
+      );
+    });
+  });
+
+  group('loadLastUpdateLog', () {
+    late Directory dir;
+    setUp(() => dir = Directory.systemTemp.createTempSync('lastlog'));
+    tearDown(() => dir.deleteSync(recursive: true));
+
+    test('有 log：讀入、改名保留，只提示一次', () async {
+      File('${dir.path}/update_error.log').writeAsStringSync('boom');
+      final svc = UpdateService(currentVersion: '1.0.0', isWindows: true);
+      await svc.loadLastUpdateLog(appDir: dir);
+      expect(svc.pendingNotice, 'boom');
+      expect(File('${dir.path}/update_error.log').existsSync(), isFalse);
+      final kept = dir.listSync().where(
+        (e) => RegExp(r'update_error\.\d{8}-\d{6}\.log$').hasMatch(e.path),
+      );
+      expect(kept, hasLength(1));
+      expect(svc.takeNotice(), 'boom');
+      expect(svc.pendingNotice, isNull);
+      await svc.loadLastUpdateLog(appDir: dir);
+      expect(svc.pendingNotice, isNull);
+    });
+
+    test('沒有 log：不提示', () async {
+      final svc = UpdateService(currentVersion: '1.0.0', isWindows: true);
+      await svc.loadLastUpdateLog(appDir: dir);
+      expect(svc.pendingNotice, isNull);
+    });
+  });
+
   test('先取得舊程式 Handle 才寫 started 標記', () {
     final src = UpdateService.applyScriptSource;
     final handle = src.indexOf('[void]\$proc.Handle');
@@ -289,6 +364,7 @@ void _applyScriptTests() {
             exe: exe,
             started: c.started.path,
             waitSeconds: waitSeconds,
+            longTries: 3, // 測試縮短長重試（正式為 60 x 500ms）
           ),
         ),
         started: c.started,

@@ -55,6 +55,8 @@ Future<void> main(List<String> args) async {
   ProtocolRegistrar().registerIfNeeded();
   // 不等待：查 GitHub 有沒有新版，有才在側欄顯示更新提示
   UpdateService.instance.check();
+  // 不等待：上次更新若留下 update_error.log，讓側欄提示一次
+  UpdateService.instance.loadLastUpdateLog();
   // 不等待：開機啟動已開啟時，讓 Run 項目對齊目前的執行檔路徑
   AutostartService.instance.syncOnStart();
   runApp(const OsuBeatmapApp());

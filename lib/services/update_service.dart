@@ -65,6 +65,10 @@ class UpdateService extends ChangeNotifier {
   double? _progress;
   String? _error;
 
+  /// 上次更新留下的 update_error.log 內容；尚未提示給使用者時才非 null
+  String? get pendingNotice => _notice;
+  String? _notice;
+
   UpdateStatus get status => _status;
 
   /// 有比目前新的版本時才非 null
@@ -73,6 +77,36 @@ class UpdateService extends ChangeNotifier {
   /// 下載進度 0–1；null 表示不確定
   double? get progress => _progress;
   String? get error => _error;
+
+  /// 啟動時呼叫：程式資料夾有 update_error.log 就讀入並改名為
+  /// `update_error.<時間>.log`（只提示一次），內容放進 [pendingNotice]。
+  Future<void> loadLastUpdateLog({Directory? appDir}) async {
+    try {
+      final dir = appDir ?? Directory(p.dirname(Platform.resolvedExecutable));
+      final file = File(p.join(dir.path, 'update_error.log'));
+      if (!file.existsSync()) return;
+      var text = '';
+      try {
+        text = (await file.readAsString()).trim();
+      } catch (_) {}
+      final t = DateTime.now();
+      String two(int n) => n.toString().padLeft(2, '0');
+      final stamp =
+          '${t.year}${two(t.month)}${two(t.day)}-${two(t.hour)}${two(t.minute)}${two(t.second)}';
+      await file.rename(p.join(dir.path, 'update_error.$stamp.log'));
+      _notice = text.isEmpty ? '（沒有詳細紀錄）' : text;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('讀取上次更新紀錄失敗：$e');
+    }
+  }
+
+  /// 取走並清除 [pendingNotice]
+  String? takeNotice() {
+    final n = _notice;
+    _notice = null;
+    return n;
+  }
 
   /// 查詢最新版。失敗只記錄、不丟例外，不影響程式使用。
   Future<void> check() async {
@@ -139,6 +173,9 @@ class UpdateService extends ChangeNotifier {
       await compute(_extract, (zip: zipPath, out: extractDir));
       final source = _findAppRoot(Directory(extractDir));
       if (source == null) throw UpdateException('下載的檔案裡找不到 $_exeName');
+      if (!isCompletePackage(source)) {
+        throw const UpdateException(incompleteMessage);
+      }
 
       final script = File(p.join(work.path, 'apply_update.ps1'));
       await script.writeAsBytes([
@@ -174,6 +211,15 @@ class UpdateService extends ChangeNotifier {
     }
   }
 
+  static const incompleteMessage = '下載的檔案不完整，請改為手動下載 zip 更新';
+
+  /// 解壓後的資料夾是否含執行檔、flutter_windows.dll 與 data/
+  @visibleForTesting
+  static bool isCompletePackage(Directory root) =>
+      File(p.join(root.path, _exeName)).existsSync() &&
+      File(p.join(root.path, 'flutter_windows.dll')).existsSync() &&
+      Directory(p.join(root.path, 'data')).existsSync();
+
   static const launchFailedMessage = '更新程式沒有啟動，請改為手動下載 zip 更新';
 
   /// 轉成給使用者看的失敗訊息，拿掉 `Exception: ` 之類的前綴
@@ -203,6 +249,7 @@ class UpdateService extends ChangeNotifier {
     required String exe,
     required String started,
     int waitSeconds = 60,
+    int longTries = 60,
   }) => [
     '-NoProfile',
     '-ExecutionPolicy',
@@ -223,6 +270,8 @@ class UpdateService extends ChangeNotifier {
     started,
     '-WaitSeconds',
     '$waitSeconds',
+    '-LongTries',
+    '$longTries',
   ];
 
   /// 啟動腳本並等它寫出 [started] 標記，確認真的跑起來才回傳 true。
@@ -319,7 +368,7 @@ void _extract(({String zip, String out}) args) {
 /// 殘留的舊備份改名保留、不還原不刪除。
 /// 錯誤寫進 update_error.log。
 const _applyScript = r'''
-param([int]$AppPid, [string]$Source, [string]$Target, [string]$Exe, [string]$Started, [int]$WaitSeconds = 60)
+param([int]$AppPid, [string]$Source, [string]$Target, [string]$Exe, [string]$Started, [int]$WaitSeconds = 60, [int]$LongTries = 60)
 $ErrorActionPreference = 'Stop'
 $log = Join-Path $Target 'update_error.log'
 Remove-Item -LiteralPath $log -Force -ErrorAction SilentlyContinue
@@ -329,11 +378,14 @@ function Write-Log([string]$Message) {
   try { Add-Content -LiteralPath $log -Value $Message -Encoding UTF8 } catch {}
 }
 
-# Run an action up to 5 times (200 ms apart); log and return $false if it keeps failing.
-function Invoke-Retry([scriptblock]$Action, [string]$What) {
+# Run an action with retries; log and return $false if it keeps failing. Default: 5 x 200 ms.
+# -Long: 60 x 500 ms (about 30 s) to ride out antivirus scans and indexers on files that must move.
+function Invoke-Retry([scriptblock]$Action, [string]$What, [switch]$Long) {
   $err = $null
-  for ($i = 0; $i -lt 5; $i++) {
-    try { & $Action; return $true } catch { $err = $_; Start-Sleep -Milliseconds 200 }
+  $tries = 5; $delay = 200
+  if ($Long) { $tries = $LongTries; $delay = 500 }
+  for ($i = 0; $i -lt $tries; $i++) {
+    try { & $Action; return $true } catch { $err = $_; Start-Sleep -Milliseconds $delay }
   }
   Write-Log "FAILED: $What : $err"
   return $false
@@ -457,14 +509,14 @@ if ($staged) {
       if (Test-Path -LiteralPath (Join-Path $Target $name)) {
         $from = Join-Path $Target $name
         $to = Join-Path $backup $name
-        if (-not (Invoke-Retry { Move-Entry $from $to } "back up $name")) { throw "cannot back up $name" }
+        if (-not (Invoke-Retry { Move-Entry $from $to } "back up $name" -Long)) { throw "cannot back up $name" }
         [void]$moved.Add($name)
       }
     }
     foreach ($name in $newNames) {
       $from = Join-Path $staging $name
       $to = Join-Path $Target $name
-      if (-not (Invoke-Retry { Move-Entry $from $to } "place $name")) { throw "cannot place $name" }
+      if (-not (Invoke-Retry { Move-Entry $from $to } "place $name" -Long)) { throw "cannot place $name" }
       [void]$placed.Add($name)
     }
     $ok = $true
@@ -475,12 +527,12 @@ if ($staged) {
         $name = $placed[$i]
         $from = Join-Path $Target $name
         $to = Join-Path $staging $name
-        [void](Invoke-Retry { Move-Entry $from $to } "move new $name back to staging")
+        [void](Invoke-Retry { Move-Entry $from $to } "move new $name back to staging" -Long)
       }
       foreach ($name in $moved) {
         $from = Join-Path $backup $name
         $to = Join-Path $Target $name
-        [void](Invoke-Retry { Move-Entry $from $to } "restore $name")
+        [void](Invoke-Retry { Move-Entry $from $to } "restore $name" -Long)
       }
       if (-not @(Get-ChildItem -LiteralPath $backup -Force -ErrorAction SilentlyContinue)) {
         Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue

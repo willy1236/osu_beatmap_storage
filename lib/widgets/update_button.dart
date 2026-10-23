@@ -11,6 +11,33 @@ class UpdateButton extends StatelessWidget {
     return ListenableBuilder(
       listenable: service,
       builder: (context, _) {
+        if (service.pendingNotice != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            final notice = service.takeNotice();
+            if (notice == null || !context.mounted) return;
+            showDialog<void>(
+              context: context,
+              builder: (_) => AlertDialog(
+                title: const Text('上次更新沒有順利完成'),
+                content: SizedBox(
+                  width: 480,
+                  child: SingleChildScrollView(
+                    child: SelectableText(
+                      '程式可能已退回舊版，或有部分檔案需要手動處理；'
+                      '也可以改為手動下載 zip 更新。\n\n詳細紀錄：\n$notice',
+                    ),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('知道了'),
+                  ),
+                ],
+              ),
+            );
+          });
+        }
         final info = service.available;
         if (info == null) return const SizedBox.shrink();
         return Padding(
