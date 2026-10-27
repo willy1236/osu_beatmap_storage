@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'app.dart';
+import 'services/app_data_migration.dart';
 import 'services/app_link_service.dart';
 import 'services/auth_service.dart';
 import 'services/autostart_service.dart';
@@ -29,6 +30,8 @@ Future<void> main(List<String> args) async {
     Directory.current = p.dirname(Platform.resolvedExecutable);
   }
   WidgetsFlutterBinding.ensureInitialized();
+  // 要在 AuthService 等用到 path_provider 的服務之前，舊版 com.example 資料夾的登入資訊才搬得到
+  await migrateLegacyAppData();
   // 攔截關閉視窗；開機自動啟動時視窗尚未顯示（見 flutter_window.cpp），直接縮在系統匣
   TrayService.askHook = () {
     final context = appNavigatorKey.currentState?.overlay?.context;

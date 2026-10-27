@@ -9,6 +9,7 @@ on:
     branches-ignore: [main]
     paths:
       - 'installer/**'
+      - 'windows/**'
       - '.github/workflows/release.yml'
 
 permissions:
