@@ -51,6 +51,7 @@ dependencies:
   launch_at_startup: ^0.5.1
   win32: ^5.15.0 # 列出程序與執行檔路徑（偵測 osu!lazer）
   ffi: ^2.2.0 # win32 呼叫需要配置原生記憶體
+  win32_registry: ^2.1.0 # 安裝版的解除安裝項目（同步版本號）
 
 dev_dependencies:
   flutter_test:

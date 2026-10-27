@@ -37,6 +37,10 @@ ShowLanguageDialog=auto
 Name: "chinesetraditional"; MessagesFile: "compiler:Languages\ChineseTraditional.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+[CustomMessages]
+chinesetraditional.DirNotWritable=無法寫入「%1」。%n%n這個位置需要管理員權限，請選擇其他資料夾，例如預設的使用者目錄。
+english.DirNotWritable=Setup cannot write to "%1".%n%nThis location requires administrator rights. Please choose another folder, such as the default one in your user profile.
+
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
@@ -60,3 +64,49 @@ Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags
 Type: filesandordirs; Name: "{app}\bin"
 Type: filesandordirs; Name: "{app}\.update_backup"
 Type: filesandordirs; Name: "{app}\.update_staging"
+
+[Code]
+// 安裝檔以一般權限執行，Program Files 這類位置寫不進去；程式執行時也要在安裝資料夾寫 config.json、
+// bin\ 與自動更新。選位置的頁面先試寫，不讓使用者裝到一半才失敗
+function CanWriteTo(Dir: String): Boolean;
+var
+  Child, Parent, TestFile: String;
+begin
+  Dir := RemoveBackslashUnlessRoot(Dir);
+  if DirExists(Dir) then
+  begin
+    TestFile := AddBackslash(Dir) + '.osu_beatmap_storage_write_test';
+    Result := SaveStringToFile(TestFile, '', False);
+    if Result then
+      DeleteFile(TestFile);
+    Exit;
+  end;
+
+  // 資料夾還不存在：往上找到最近一層已存在的資料夾，試建下一層再刪掉，不留空資料夾。
+  // 不直接在上層試寫檔案，因為 C:\ 這類位置允許建資料夾但不允許寫檔
+  Child := Dir;
+  Parent := ExtractFileDir(Child);
+  while not DirExists(Parent) do
+  begin
+    if (Parent = '') or (ExtractFileDir(Parent) = Parent) then
+    begin
+      Result := False;
+      Exit;
+    end;
+    Child := Parent;
+    Parent := ExtractFileDir(Child);
+  end;
+  Result := CreateDir(Child);
+  if Result then
+    RemoveDir(Child);
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
+  Result := True;
+  if (CurPageID = wpSelectDir) and not CanWriteTo(WizardDirValue) then
+  begin
+    SuppressibleMsgBox(FmtMessage(CustomMessage('DirNotWritable'), [WizardDirValue]), mbError, MB_OK, IDOK);
+    Result := False;
+  end;
+end;

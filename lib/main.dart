@@ -6,6 +6,7 @@ import 'app.dart';
 import 'services/app_link_service.dart';
 import 'services/auth_service.dart';
 import 'services/autostart_service.dart';
+import 'services/installed_version_service.dart';
 import 'services/auto_upload_service.dart';
 import 'services/cloud_presence_service.dart';
 import 'services/friend_service.dart';
@@ -59,5 +60,7 @@ Future<void> main(List<String> args) async {
   UpdateService.instance.loadLastUpdateLog();
   // 不等待：開機啟動已開啟時，讓 Run 項目對齊目前的執行檔路徑
   AutostartService.instance.syncOnStart();
+  // 用安裝檔裝的版本，讓「程式和功能」的版本號跟上程式內更新
+  InstalledVersionService.instance.syncOnStart();
   runApp(const OsuBeatmapApp());
 }
