@@ -34,8 +34,7 @@ WizardStyle=modern
 ShowLanguageDialog=auto
 
 [Languages]
-; 正體中文語系檔不隨 Inno Setup 6 附上，取自 jrsoftware/issrc is-6_7_1 的 Files/Languages/Unofficial/
-Name: "chinesetraditional"; MessagesFile: "ChineseTraditional.isl"
+Name: "chinesetraditional"; MessagesFile: "compiler:Languages\ChineseTraditional.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
