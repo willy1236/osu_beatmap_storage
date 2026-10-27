@@ -8,10 +8,11 @@
 #define AppName "osu_beatmap_storage"
 #define AppExe "osu_beatmap_storage.exe"
 #define ReleaseDir "..\build\windows\x64\runner\Release"
+; AppId 決定升級與解除安裝時認得是同一個程式，發佈後不可更改；[Code] 也用它找已安裝的版本
+#define AppGuid "8C00BB22-9985-4B24-A4A4-B90B111005CE"
 
 [Setup]
-; AppId 決定升級與解除安裝時認得是同一個程式，發佈後不可更改
-AppId={{8C00BB22-9985-4B24-A4A4-B90B111005CE}
+AppId={{{#AppGuid}}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher=析域工作室
@@ -46,6 +47,18 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [CustomMessages]
 chinesetraditional.DirNotWritable=無法寫入「%1」。%n%n這個位置需要管理員權限，請選擇其他資料夾，例如預設的使用者目錄。
 english.DirNotWritable=Setup cannot write to "%1".%n%nThis location requires administrator rights. Please choose another folder, such as the default one in your user profile.
+chinesetraditional.MaintCaption=已安裝 {#AppName}
+chinesetraditional.MaintDescription=選擇要重新安裝還是解除安裝。
+chinesetraditional.MaintSubCaption=這台電腦已經裝過 {#AppName}（版本 %1）。
+chinesetraditional.MaintReinstall=重新安裝／更新到 {#AppVersion}（保留設定）
+chinesetraditional.MaintUninstall=解除安裝
+chinesetraditional.MaintUninstallFailed=無法執行解除安裝程式，請改從 Windows「設定 > 應用程式」解除安裝。
+english.MaintCaption={#AppName} is already installed
+english.MaintDescription=Choose whether to reinstall or uninstall.
+english.MaintSubCaption={#AppName} (version %1) is already installed on this computer.
+english.MaintReinstall=Reinstall / update to {#AppVersion} (keep settings)
+english.MaintUninstall=Uninstall
+english.MaintUninstallFailed=Setup could not run the uninstaller. Please uninstall from Windows Settings > Apps instead.
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
@@ -64,6 +77,8 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+; 程式內更新以靜默模式加 /RELAUNCH=1 執行，裝完自動重新開啟
+Filename: "{app}\{#AppExe}"; Flags: nowait; Check: RelaunchAfterUpdate
 
 [UninstallDelete]
 ; danser 下載內容與自動更新殘留；config.json 保留，重裝後登入與路徑設定還在
@@ -107,9 +122,71 @@ begin
     RemoveDir(Child);
 end;
 
+function RelaunchAfterUpdate: Boolean;
+begin
+  Result := WizardSilent and (ExpandConstant('{param:RELAUNCH|0}') = '1');
+end;
+
+// 已經裝過時，第一頁讓使用者選重新安裝或解除安裝。安裝檔以一般權限執行，解除安裝資訊只會在 HKCU
+var
+  MaintPage: TInputOptionWizardPage;
+  UninstallExe: String;
+  ClosingAfterUninstall: Boolean;
+
+procedure InitializeWizard;
+var
+  UninstallKey, InstalledVersion: String;
+begin
+  UninstallKey := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{' + '{#AppGuid}' + '}_is1';
+  if not RegQueryStringValue(HKCU, UninstallKey, 'UninstallString', UninstallExe) then
+    Exit;
+  UninstallExe := RemoveQuotes(UninstallExe);
+  if not FileExists(UninstallExe) then
+    Exit;
+  if not RegQueryStringValue(HKCU, UninstallKey, 'DisplayVersion', InstalledVersion) then
+    InstalledVersion := '?';
+
+  MaintPage := CreateInputOptionPage(wpWelcome, CustomMessage('MaintCaption'), CustomMessage('MaintDescription'),
+    FmtMessage(CustomMessage('MaintSubCaption'), [InstalledVersion]), True, False);
+  MaintPage.Add(CustomMessage('MaintReinstall'));
+  MaintPage.Add(CustomMessage('MaintUninstall'));
+  // 靜默安裝不會顯示這頁，維持預設的重新安裝
+  MaintPage.SelectedValueIndex := 0;
+end;
+
+// 解除安裝成功就關掉安裝程式；使用者在解除安裝程式裡取消則留在這頁
+function RunUninstaller: Boolean;
+var
+  ExitCode: Integer;
+begin
+  Result := False;
+  if not Exec(UninstallExe, '', '', SW_SHOW, ewWaitUntilTerminated, ExitCode) then
+  begin
+    SuppressibleMsgBox(CustomMessage('MaintUninstallFailed'), mbError, MB_OK, IDOK);
+    Exit;
+  end;
+  Result := ExitCode = 0;
+end;
+
+procedure CancelButtonClick(CurPageID: Integer; var Cancel, Confirm: Boolean);
+begin
+  if ClosingAfterUninstall then
+    Confirm := False;
+end;
+
 function NextButtonClick(CurPageID: Integer): Boolean;
 begin
   Result := True;
+  if (MaintPage <> nil) and (CurPageID = MaintPage.ID) and (MaintPage.SelectedValueIndex = 1) then
+  begin
+    Result := False;
+    if RunUninstaller then
+    begin
+      ClosingAfterUninstall := True;
+      WizardForm.Close;
+    end;
+    Exit;
+  end;
   if (CurPageID = wpSelectDir) and not CanWriteTo(WizardDirValue) then
   begin
     SuppressibleMsgBox(FmtMessage(CustomMessage('DirNotWritable'), [WizardDirValue]), mbError, MB_OK, IDOK);

@@ -79,12 +79,27 @@ class InstalledVersionService {
   void syncOnStart() {
     try {
       if (_version.isEmpty) return;
-      final reg = _open();
+      final reg = _openHere();
       if (reg == null) return;
-      final location = reg.read('InstallLocation');
-      if (location == null || !p.windows.equals(location, _exeDir)) return;
       if (reg.read('DisplayVersion') == _version) return;
       reg.write('DisplayVersion', _version);
     } catch (_) {}
+  }
+
+  /// 目前這個資料夾是否由安裝檔裝的；是的話程式內更新改跑安裝檔。讀不到 registry 視為否
+  bool isInstalledHere() {
+    try {
+      return _openHere() != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  InstallRegistry? _openHere() {
+    final reg = _open();
+    if (reg == null) return null;
+    final location = reg.read('InstallLocation');
+    if (location == null || !p.windows.equals(location, _exeDir)) return null;
+    return reg;
   }
 }
