@@ -27,7 +27,8 @@ class FriendSearchField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+    // 下方留距離，第一個好友才不會貼著搜尋框
+    padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
     child: TextField(
       decoration: const InputDecoration(
         prefixIcon: Icon(Icons.search),

@@ -132,7 +132,14 @@ class TrayService {
     _inTray = false;
   }
 
+  /// window_manager 的 destroy 在 Windows 只送 PostQuitMessage，視窗要等 Flutter engine
+  /// 關完才真的消失，畫面會卡一下；先藏起視窗，按下去就立刻不見。藏失敗也照樣結束
   Future<void> quit() async {
+    try {
+      await _platform.hideWindow();
+    } catch (e) {
+      debugPrint('結束前隱藏視窗失敗：$e');
+    }
     await _platform.removeTrayIcon();
     await _platform.destroyWindow();
   }
