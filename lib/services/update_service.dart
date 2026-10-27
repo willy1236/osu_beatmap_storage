@@ -8,18 +8,24 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 
+import 'installed_version_service.dart';
+
 /// GitHub 上最新一版的資訊
 class UpdateInfo {
   const UpdateInfo({
     required this.version,
     required this.notes,
-    required this.zipUrl,
+    this.zipUrl,
+    this.setupUrl,
   });
 
   /// 不含前綴 v，例如 `2.2.0`
   final String version;
   final String notes;
-  final String zipUrl;
+
+  /// release 沒附對應檔案時為 null；[UpdateService.check] 保證至少有一個用得上
+  final String? zipUrl;
+  final String? setupUrl;
 }
 
 /// 更新流程中可直接顯示給使用者的錯誤
@@ -39,23 +45,34 @@ enum UpdateStatus { idle, available, downloading, installing, failed }
 /// 只替換程式檔：執行檔、`*.dll` 與 `data/`。程式執行中檔案被鎖住，替換交給
 /// 一支 PowerShell 腳本，等本程式結束後再搬檔、重新啟動。
 ///
+/// 用安裝檔裝在目前資料夾的，改下載安裝檔靜默執行：Inno 的解除安裝紀錄才會包含新版的檔案，
+/// 解除安裝不留殘檔。免安裝版（或 release 沒附安裝檔）照舊走 zip。
+///
 /// 目前版本由建置時的 `--dart-define=APP_VERSION=x.y.z` 帶入；沒帶（本機開發）就不檢查。
 class UpdateService extends ChangeNotifier {
   static final instance = UpdateService();
 
-  UpdateService({http.Client? client, String? currentVersion, bool? isWindows})
-    : _client = client ?? http.Client(),
-      currentVersion =
-          currentVersion ?? const String.fromEnvironment('APP_VERSION'),
-      _isWindows = isWindows ?? Platform.isWindows;
+  UpdateService({
+    http.Client? client,
+    String? currentVersion,
+    bool? isWindows,
+    bool Function()? installedHere,
+  }) : _client = client ?? http.Client(),
+       currentVersion =
+           currentVersion ?? const String.fromEnvironment('APP_VERSION'),
+       _isWindows = isWindows ?? Platform.isWindows,
+       _installedHere =
+           installedHere ?? InstalledVersionService.instance.isInstalledHere;
 
   static const _latestUrl =
       'https://api.github.com/repos/willy1236/osu_beatmap_storage/releases/latest';
   static const _assetPrefix = 'osu_beatmap_storage';
+  static const _setupPrefix = 'osu_beatmap_storage_setup_';
   static const _exeName = 'osu_beatmap_storage.exe';
 
   final http.Client _client;
   final bool _isWindows;
+  final bool Function() _installedHere;
 
   /// 空字串表示本機開發版
   final String currentVersion;
@@ -123,17 +140,24 @@ class UpdateService extends ChangeNotifier {
         '',
       );
       if (!isNewer(version, currentVersion)) return;
-      final asset = (data['assets'] as List).cast<Map<String, dynamic>>().where(
-        (a) {
-          final name = a['name'] as String;
-          return name.startsWith(_assetPrefix) && name.endsWith('.zip');
-        },
-      ).firstOrNull;
-      if (asset == null) return;
+      final assets = (data['assets'] as List).cast<Map<String, dynamic>>();
+      String? urlOf(bool Function(String name) match) =>
+          assets
+                  .where((a) => match(a['name'] as String))
+                  .firstOrNull?['browser_download_url']
+              as String?;
+      final zipUrl = urlOf(
+        (name) => name.startsWith(_assetPrefix) && name.endsWith('.zip'),
+      );
+      final setupUrl = urlOf(
+        (name) => name.startsWith(_setupPrefix) && name.endsWith('.exe'),
+      );
+      if (zipUrl == null && (setupUrl == null || !_installedHere())) return;
       _available = UpdateInfo(
         version: version,
         notes: (data['body'] as String?) ?? '',
-        zipUrl: asset['browser_download_url'] as String,
+        zipUrl: zipUrl,
+        setupUrl: setupUrl,
       );
       _status = UpdateStatus.available;
       notifyListeners();
@@ -159,9 +183,15 @@ class UpdateService extends ChangeNotifier {
       if (work.existsSync()) await work.delete(recursive: true);
       await work.create(recursive: true);
 
+      final setupUrl = info.setupUrl;
+      if (setupUrl != null && _installedHere()) {
+        await _installWithSetup(setupUrl, work);
+        return;
+      }
+
       final zipPath = p.join(work.path, 'update.zip');
       await Dio().download(
-        info.zipUrl,
+        info.zipUrl!,
         zipPath,
         onReceiveProgress: (received, total) {
           if (total > 0) _setStatus(UpdateStatus.downloading, received / total);
@@ -210,6 +240,46 @@ class UpdateService extends ChangeNotifier {
       _setStatus(UpdateStatus.failed, null);
     }
   }
+
+  /// 下載安裝檔後靜默執行，啟動成功就結束本程式；關閉、換檔與重新啟動都交給安裝檔
+  Future<void> _installWithSetup(String url, Directory work) async {
+    final setupPath = p.join(work.path, 'update_setup.exe');
+    await Dio().download(
+      url,
+      setupPath,
+      onReceiveProgress: (received, total) {
+        if (total > 0) _setStatus(UpdateStatus.downloading, received / total);
+      },
+    );
+    _setStatus(UpdateStatus.installing, null);
+    try {
+      // 不等安裝檔：它要等本程式結束才能換檔，啟動後立刻結束
+      await Process.start(
+        setupPath,
+        setupArgs(log: p.join(work.path, 'update_setup.log')),
+      );
+    } catch (e) {
+      debugPrint('啟動安裝檔失敗：$e');
+      throw const UpdateException(setupLaunchFailedMessage);
+    }
+    exit(0);
+  }
+
+  static const setupLaunchFailedMessage = '安裝檔沒有啟動，請改為手動下載安裝檔更新';
+
+  /// 安裝檔的靜默參數。`/RELAUNCH=1` 讓 setup.iss 在裝完後重新開啟程式；
+  /// 不讓 Restart Manager 重啟程式，避免和 `/RELAUNCH` 各開一個
+  @visibleForTesting
+  static List<String> setupArgs({required String log}) => [
+    '/VERYSILENT',
+    '/SUPPRESSMSGBOXES',
+    '/NORESTART',
+    '/CLOSEAPPLICATIONS',
+    '/FORCECLOSEAPPLICATIONS',
+    '/NORESTARTAPPLICATIONS',
+    '/RELAUNCH=1',
+    '/LOG=$log',
+  ];
 
   static const incompleteMessage = '下載的檔案不完整，請改為手動下載 zip 更新';
 

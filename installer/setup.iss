@@ -77,6 +77,8 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+; 程式內更新以靜默模式加 /RELAUNCH=1 執行，裝完自動重新開啟
+Filename: "{app}\{#AppExe}"; Flags: nowait; Check: RelaunchAfterUpdate
 
 [UninstallDelete]
 ; danser 下載內容與自動更新殘留；config.json 保留，重裝後登入與路徑設定還在
@@ -118,6 +120,11 @@ begin
   Result := CreateDir(Child);
   if Result then
     RemoveDir(Child);
+end;
+
+function RelaunchAfterUpdate: Boolean;
+begin
+  Result := WizardSilent and (ExpandConstant('{param:RELAUNCH|0}') = '1');
 end;
 
 // 已經裝過時，第一頁讓使用者選重新安裝或解除安裝。安裝檔以一般權限執行，解除安裝資訊只會在 HKCU

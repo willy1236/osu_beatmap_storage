@@ -74,4 +74,19 @@ void main() {
     reg.fail = true;
     expect(() => service(reg).syncOnStart(), returnsNormally);
   });
+
+  test('isInstalledHere：只有解除安裝項目指向目前資料夾才算', () {
+    InstallRegistry at(String location) =>
+        _FakeRegistry({'InstallLocation': location});
+
+    expect(service(at('$exeDir\\')).isInstalledHere(), isTrue);
+    expect(
+      service(at(r'D:\Games\osu_beatmap_storage\')).isInstalledHere(),
+      isFalse,
+    );
+    expect(service(null).isInstalledHere(), isFalse);
+    final failing = _FakeRegistry({'InstallLocation': '$exeDir\\'})
+      ..fail = true;
+    expect(service(failing).isInstalledHere(), isFalse);
+  });
 }

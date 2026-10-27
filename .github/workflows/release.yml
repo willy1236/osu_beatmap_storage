@@ -71,7 +71,7 @@ jobs:
           if (-not (Test-Path "$dir\ISCC.exe")) { throw "找不到 $dir\ISCC.exe" }
           "ISCC=$dir\ISCC.exe" >> $env:GITHUB_ENV
 
-      # 程式內的自動更新只抓 zip；安裝檔給第一次安裝的使用者
+      # 程式內更新：用安裝檔裝的跑安裝檔，免安裝版抓 zip
       - name: Installer
         shell: pwsh
         run: |

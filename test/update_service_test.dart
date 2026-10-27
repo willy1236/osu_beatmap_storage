@@ -20,14 +20,17 @@ UpdateService _service(
   String body, {
   String current = '2.1.0',
   int code = 200,
+  bool installed = false,
 }) => UpdateService(
   client: MockClient((_) async => http.Response(body, code)),
   currentVersion: current,
   isWindows: true,
+  installedHere: () => installed,
 );
 
 void main() {
   _applyScriptTests();
+  _setupArgsTests();
   group('isNewer', () {
     test('比較 x.y.z 數字', () {
       expect(UpdateService.isNewer('2.2.0', '2.1.0'), isTrue);
@@ -72,6 +75,42 @@ void main() {
       }
     });
 
+    test('同時記下 zip 與安裝檔', () async {
+      final s = _service(
+        _release(
+          'v2.2.0',
+          assets: [
+            'osu_beatmap_storage_v2.2.0.zip',
+            'osu_beatmap_storage_setup_v2.2.0.exe',
+          ],
+        ),
+      );
+      await s.check();
+      expect(
+        s.available!.zipUrl,
+        'https://example.com/osu_beatmap_storage_v2.2.0.zip',
+      );
+      expect(
+        s.available!.setupUrl,
+        'https://example.com/osu_beatmap_storage_setup_v2.2.0.exe',
+      );
+    });
+
+    test('只有安裝檔：安裝版提示更新，免安裝版不提示', () async {
+      final body = _release(
+        'v2.2.0',
+        assets: ['osu_beatmap_storage_setup_v2.2.0.exe'],
+      );
+      final installed = _service(body, installed: true);
+      await installed.check();
+      expect(installed.available!.zipUrl, isNull);
+      expect(installed.available!.setupUrl, isNotNull);
+
+      final portable = _service(body);
+      await portable.check();
+      expect(portable.available, isNull);
+    });
+
     test('本機開發版（沒帶 APP_VERSION）不發請求', () async {
       var called = false;
       final s = UpdateService(
@@ -85,6 +124,30 @@ void main() {
       await s.check();
       expect(called, isFalse);
     });
+  });
+}
+
+void _setupArgsTests() {
+  test('安裝檔參數：靜默、關閉舊程式、由 setup.iss 重新開啟', () {
+    final args = UpdateService.setupArgs(log: r'C:\tmp dir\setup.log');
+    expect(
+      args,
+      containsAll([
+        '/VERYSILENT',
+        '/SUPPRESSMSGBOXES',
+        '/CLOSEAPPLICATIONS',
+        '/NORESTARTAPPLICATIONS',
+        '/RELAUNCH=1',
+      ]),
+    );
+    // 路徑整段放在同一個元素，quoting 交給 Process.start
+    expect(args, contains(r'/LOG=C:\tmp dir\setup.log'));
+  });
+
+  test('setup.iss 認得 /RELAUNCH=1', () {
+    final iss = File('installer/setup.iss').readAsStringSync();
+    expect(iss, contains("{param:RELAUNCH|0}') = '1'"));
+    expect(iss, contains('Check: RelaunchAfterUpdate'));
   });
 }
 
