@@ -33,20 +33,20 @@ dependencies:
   realm: ^20.2.0 # 支援桌面端的 Realm SDK
   path_provider: ^2.1.0 # 用於偵測各系統的儲存路徑
   http: ^1.1.0 # 替代原本的 requests 進行下載
-  file_picker: ^8.0.0 # 讓使用者選取 client.realm 路徑
+  file_picker: ^11.0.3 # 讓使用者選取 client.realm 路徑
   dio: ^5.7.0 # 支援進度回調的 HTTP 下載客戶端（danser-go 安裝用）
   path: ^1.9.0 # 跨平台路徑拼接
-  archive: ^3.6.0 # 解壓縮 danser-go 釋出的 zip 包
+  archive: ^4.5.2 # 解壓縮 danser-go 釋出的 zip 包
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
-  cupertino_icons: ^1.0.8
+  cupertino_icons: ^2.0.0
   flutter_secure_storage: ^10.3.4
   url_launcher: ^6.3.3
   crypto: ^3.0.7
   app_links: ^7.2.2
   window_manager: ^0.5.2
-  tray_manager: ^0.5.3
+  tray_manager: ^0.8.0
   local_notifier: ^0.1.6 # Windows toast 通知
   launch_at_startup: ^0.5.1
   win32: ^5.15.0 # 列出程序與執行檔路徑（偵測 osu!lazer）

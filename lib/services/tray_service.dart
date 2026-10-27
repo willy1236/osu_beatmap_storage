@@ -139,15 +139,15 @@ class TrayService {
 }
 
 /// 以 window_manager 與 tray_manager 實作的 [TrayPlatform]
-class WindowTrayPlatform
-    with WindowListener, TrayListener
-    implements TrayPlatform {
+class WindowTrayPlatform with WindowListener implements TrayPlatform {
   static const _iconAsset = 'windows/runner/resources/app_icon.ico';
-  static const _quitKey = 'quit';
 
   VoidCallback? _onClose;
   VoidCallback? _onTrayClick;
   VoidCallback? _onQuit;
+
+  // 要一直持有：wrapper 被 GC 時會釋放 native handle，圖示也跟著消失
+  TrayIcon? _trayIcon;
 
   @override
   Future<void> init({
@@ -161,7 +161,6 @@ class WindowTrayPlatform
     await windowManager.ensureInitialized();
     await windowManager.setPreventClose(true);
     windowManager.addListener(this);
-    trayManager.addListener(this);
   }
 
   @override
@@ -178,29 +177,34 @@ class WindowTrayPlatform
 
   @override
   Future<void> showTrayIcon() async {
-    await trayManager.setIcon(_iconAsset);
-    await trayManager.setToolTip('osu! Beatmap Viewer');
-    await trayManager.setContextMenu(
-      Menu(
-        items: [MenuItem(key: _quitKey, label: '結束')],
-      ),
-    );
+    if (_trayIcon != null) return;
+    final trayIcon = TrayIcon.create();
+    if (trayIcon == null) return;
+    trayIcon.icon = ImageAsset.fromAsset(_iconAsset);
+    trayIcon.setTooltip('osu! Beatmap Viewer');
+
+    final quitItem =
+        MenuItem.createWithLabelAndType('結束', MenuItemType.normal)!;
+    quitItem.addListener((event) {
+      if (event is MenuItemClickedEvent) _onQuit?.call();
+    });
+    final menu = Menu.create()!..addItem(quitItem);
+    trayIcon.setContextMenu(menu);
+    trayIcon.setContextMenuTrigger(ContextMenuTrigger.rightClicked);
+
+    trayIcon.addListener((event) {
+      if (event is TrayIconClickedEvent) _onTrayClick?.call();
+    });
+    trayIcon.setVisible(true);
+    _trayIcon = trayIcon;
   }
 
   @override
-  Future<void> removeTrayIcon() => trayManager.destroy();
+  Future<void> removeTrayIcon() async {
+    _trayIcon?.dispose();
+    _trayIcon = null;
+  }
 
   @override
   void onWindowClose() => _onClose?.call();
-
-  @override
-  void onTrayIconMouseDown() => _onTrayClick?.call();
-
-  @override
-  void onTrayIconRightMouseDown() => trayManager.popUpContextMenu();
-
-  @override
-  void onTrayMenuItemClick(MenuItem menuItem) {
-    if (menuItem.key == _quitKey) _onQuit?.call();
-  }
 }
