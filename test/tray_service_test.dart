@@ -81,7 +81,7 @@ void main() {
     answer = (action: CloseAction.exit, remember: true);
     await service.handleCloseRequested();
     expect(stored, CloseAction.exit);
-    expect(platform.calls, ['trayOff', 'destroy']);
+    expect(platform.calls, ['hide', 'trayOff', 'destroy']);
     await service.handleCloseRequested();
     expect(asked, 1);
   });
@@ -103,7 +103,7 @@ void main() {
     stored = CloseAction.exit;
     await service.handleCloseRequested();
     expect(asked, 0);
-    expect(platform.calls, ['trayOff', 'destroy']);
+    expect(platform.calls, ['hide', 'trayOff', 'destroy']);
   });
 
   test('詢問中再次要求關閉會被忽略', () async {
@@ -134,7 +134,7 @@ void main() {
     platform.calls.clear();
     platform.onQuit();
     await Future<void>.delayed(Duration.zero);
-    expect(platform.calls, ['trayOff', 'destroy']);
+    expect(platform.calls, ['hide', 'trayOff', 'destroy']);
   });
 
   test('start：自動啟動且成功時縮到系統匣', () async {
