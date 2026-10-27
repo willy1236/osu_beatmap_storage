@@ -22,6 +22,17 @@
 | Flutter | 3.x 以上 |
 | osu!lazer | 任意已安裝版本 |
 
+## 安裝
+
+到 [Releases](https://github.com/willy1236/osu_beatmap_storage/releases/latest) 下載其中一種：
+
+- **`osu_beatmap_storage_setup_vX.Y.Z.exe`**：安裝檔，裝在 `%LOCALAPPDATA%\Programs\osu_beatmap_storage`，不需要管理員權限，會建立開始功能表捷徑
+- **`osu_beatmap_storage_vX.Y.Z.zip`**：免安裝版，解壓縮後直接執行 `osu_beatmap_storage.exe`
+
+安裝後的更新由程式內建的更新功能處理，兩種版本都一樣。
+
+安裝檔與執行檔目前沒有 code signing，第一次執行時 Windows SmartScreen 會顯示「Windows 已保護您的電腦」，點「其他資訊」→「仍要執行」即可。
+
 ## 專案架構
 
 ```

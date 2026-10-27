@@ -1,10 +1,16 @@
-# 推 v* tag 時建置 Windows 版，打包成 zip 建立 draft release。
+# 推 v* tag 時建置 Windows 版，打包成 zip 與 Inno Setup 安裝檔建立 draft release。
 # 程式內的更新檢查只看已發佈的 release，補完說明、按 Publish 後使用者才會收到更新。
+# 推送改到打包設定的分支時也會跑一次，產物只上傳成 workflow artifact、不建 release。
 name: Release
 
 on:
   push:
     tags: ['v*']
+    branches-ignore: [main]
+    paths:
+      - 'installer/**'
+      - 'windows/**'
+      - '.github/workflows/release.yml'
 
 permissions:
   contents: write
@@ -21,19 +27,71 @@ jobs:
           flutter-version: 3.44.4
           cache: true
 
+      # tag 建置取 tag 版號；分支建置取 pubspec 的 version（去掉 +build）
+      - name: Version
+        shell: pwsh
+        run: |
+          if ('${{ github.ref_type }}' -eq 'tag') {
+            $version = '${{ github.ref_name }}'.TrimStart('v')
+          } else {
+            $version = ((Select-String -Path pubspec.yaml -Pattern '^version:\s*([^+\s]+)').Matches[0].Groups[1].Value)
+          }
+          "VERSION=$version" >> $env:GITHUB_ENV
+
       - name: Build
         shell: pwsh
         run: |
-          $version = '${{ github.ref_name }}'.TrimStart('v')
           flutter pub get
-          flutter build windows --release --build-name=$version --dart-define=APP_VERSION=$version
+          flutter build windows --release --build-name=$env:VERSION --dart-define=APP_VERSION=$env:VERSION
+
+      # 沒裝 VC++ Redistributable 的電腦會缺這三個 dll，直接放進程式資料夾，zip 與安裝檔都帶上
+      - name: Bundle VC++ runtime
+        shell: pwsh
+        run: |
+          foreach ($dll in 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll') {
+            Copy-Item "$env:SystemRoot\System32\$dll" build/windows/x64/runner/Release/ -ErrorAction Stop
+          }
 
       - name: Package
         shell: pwsh
         run: |
-          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "osu_beatmap_storage_${{ github.ref_name }}.zip"
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "osu_beatmap_storage_v$env:VERSION.zip"
 
-      - uses: softprops/action-gh-release@v2
+      # runner 只內建 Inno Setup 6；7 從官方 GitHub release 下載，比對 release 公告的 SHA256 後安裝
+      - name: Install Inno Setup 7
+        shell: pwsh
+        run: |
+          $ver = '7.1.0'
+          $sha256 = '0362A383ED217D4C4239B5933866DD96D3EB2102737DA92F80F6057A4B40DF2F'
+          $exe = "$env:RUNNER_TEMP\innosetup.exe"
+          $dir = "$env:RUNNER_TEMP\InnoSetup7"
+          Invoke-WebRequest "https://github.com/jrsoftware/issrc/releases/download/is-$($ver.Replace('.', '_'))/innosetup-$ver-x64.exe" -OutFile $exe
+          if ((Get-FileHash $exe -Algorithm SHA256).Hash -ne $sha256) { throw 'Inno Setup 安裝檔 SHA256 不符' }
+          Start-Process $exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', '/NOICONS', "/DIR=$dir" -Wait
+          if (-not (Test-Path "$dir\ISCC.exe")) { throw "找不到 $dir\ISCC.exe" }
+          "ISCC=$dir\ISCC.exe" >> $env:GITHUB_ENV
+
+      # 程式內的自動更新只抓 zip；安裝檔給第一次安裝的使用者
+      - name: Installer
+        shell: pwsh
+        run: |
+          & $env:ISCC "/DAppVersion=$env:VERSION" installer/setup.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: osu_beatmap_storage_v${{ env.VERSION }}
+          path: |
+            osu_beatmap_storage_v${{ env.VERSION }}.zip
+            build/installer/osu_beatmap_storage_setup_v${{ env.VERSION }}.exe
+          if-no-files-found: error
+
+      - if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
         with:
           draft: true
-          files: osu_beatmap_storage_${{ github.ref_name }}.zip
+          fail_on_unmatched_files: true
+          files: |
+            osu_beatmap_storage_v${{ env.VERSION }}.zip
+            build/installer/osu_beatmap_storage_setup_v${{ env.VERSION }}.exe
