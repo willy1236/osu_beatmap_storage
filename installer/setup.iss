@@ -1,4 +1,4 @@
-; Windows 安裝檔。CI 以 `iscc /DAppVersion=x.y.z installer/setup.iss` 建置，
+﻿; Windows 安裝檔。CI 以 `iscc /DAppVersion=x.y.z installer/setup.iss` 建置，
 ; 來源是 flutter build windows 的 Release 資料夾。
 ; 裝在使用者目錄、不需管理員權限：config.json、bin/ 與自動更新都要寫入 exe 所在的資料夾。
 
@@ -14,7 +14,13 @@
 AppId={{8C00BB22-9985-4B24-A4A4-B90B111005CE}
 AppName={#AppName}
 AppVersion={#AppVersion}
-AppPublisher=willy1236
+AppPublisher=析域工作室
+AppCopyright=Copyright (C) 2026 析域工作室
+VersionInfoCompany=析域工作室
+VersionInfoDescription=osu! Beatmap Storage 安裝程式
+VersionInfoProductName=osu! Beatmap Storage
+VersionInfoProductVersion={#AppVersion}
+VersionInfoVersion={#AppVersion}
 AppPublisherURL=https://github.com/willy1236/osu_beatmap_storage
 PrivilegesRequired=lowest
 DefaultDirName={userpf}\{#AppName}
